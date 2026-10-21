@@ -3,6 +3,7 @@ matplotlib
 numpy<2.0.0
 openpyxl
 pandas
-scikit-learn
+scikit-learn==1.8.0
 scipy
 streamlit
+
