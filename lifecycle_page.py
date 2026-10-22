@@ -8,8 +8,8 @@ lifecycle_page.py: coastal bridge-bent lifecycle failure-mode GUI.
   machine-learning feature mapping and transition criteria are retained.
 - Plots: scour depth, corrosion level, annual mode probabilities, transition
   types, 1x2 transition-time fitted distributions, and 1x2 all-sample CDFs.
-- Best-fit transition legend reports distribution parameters and fitted
-  conditional (0–100 year, integer-observation) mean and COV.
+- Best-fit transition legend reports fitted distribution parameters and
+  empirical mean/COV of observed first-transition time samples (not fit moments).
 """
 
 import io
@@ -2487,67 +2487,98 @@ def get_fitted_transition_moments(selected):
     return avg, std, float(std / avg) if avg > 1e-12 else np.nan
 
 
-def format_fitted_legend(selected):
-    """Four-line SCI legend from the SAME density-LS model used by the curve.
+# The two histogram panels include ONLY observed, reliable FIRST transitions.
+# Use the exact same underlying samples for displayed mean/COV, not the
+# histogram-bin centers, the PCHIP curve, or the fitted parametric PDF.
+TRANSITION_TIME_TARGET_TYPES = {
+    "To_FFF": ("PFF->FFF", "PSF->FFF"),
+    "To_CSF": ("PFF->PSF", "FFF->PSF"),
+}
 
-    Family selection is still based on original AIC; parameters and conditional
-    0--100-year mean/STD/COV are exclusively from the independent density fit.
+
+def get_target_observed_transition_years(transition_df, target):
+    """Observed first-transition years for the given plotted target group."""
+    if target not in TRANSITION_TIME_TARGET_TYPES:
+        raise ValueError(f"Unknown transition target: {target}")
+    mask = (
+        transition_df["Transition_Flag"].astype(bool)
+        & transition_df["Transition_Type"].isin(TRANSITION_TIME_TARGET_TYPES[target])
+    )
+    years = transition_df.loc[mask, "Transition_Year"].to_numpy(dtype=float)
+    return years[np.isfinite(years) & (years >= 0) & (years <= 100)]
+
+
+def get_observed_transition_sample_moments(years):
+    """Empirical mean, population Std and COV among observed transition samples.
+
+    ddof=0 matches the Monte Carlo population statistics used in other plots.
+    The non-transitioned samples are right-censored and must not be assigned
+    a transition time of 100 years when calculating these sample statistics.
+    """
+    years = np.asarray(years, dtype=float)
+    years = years[np.isfinite(years) & (years >= 0) & (years <= 100)]
+    if years.size == 0:
+        return {"count": 0, "mean": np.nan, "std": np.nan, "cov": np.nan}
+    mean = float(np.mean(years))
+    std = float(np.std(years, ddof=0))
+    return {
+        "count": int(years.size),
+        "mean": mean,
+        "std": std,
+        "cov": float(std / mean) if mean > 1e-12 else np.nan,
+    }
+
+
+def format_fitted_legend(selected):
+    """Three-line chart legend: fitted distribution name and OBSERVED sample moments.
+
+    The second line of fitted distribution parameters is intentionally hidden
+    from the PLOT LEGEND only. Its numerical values are kept in the fitted
+    model and in the Excel BestFit_Parameters/BestFit_Param_* fields.
     """
     density_fit = selected.get("density_fit") if selected is not None else None
     if density_fit is None:
         raise ValueError("The transition-time legend requires a fitted 5-year density model.")
-    name = density_fit["name"]
-    params = density_fit["params"]
-    if name == "Normal":
-        title = "Fitted normal PDF"
-        info = rf"$\mu$ = {params['mu']:.2f}, $\sigma$ = {params['sigma']:.2f}"
 
-    elif name == "Lognormal":
-        title = "Fitted lognormal PDF"
-        lam = float(np.log(params["scale"]))
-        zeta = float(params["sigma_ln"])
-        info = rf"$\lambda$ = {lam:.2f}, $\zeta$ = {zeta:.2f}"
+    titles = {
+        "Normal": "Fitted normal PDF",
+        "Lognormal": "Fitted lognormal PDF",
+        "Gamma": "Fitted gamma PDF",
+        "Weibull": "Fitted Weibull PDF",
+        "Beta_0_100": "Fitted Beta PDF",
+    }
+    dist_name = str(density_fit["name"])
+    if dist_name not in titles:
+        raise ValueError(f"Unknown fitted distribution for legend: {dist_name}")
 
-    elif name == "Gamma":
-        title = "Fitted gamma PDF"
-        info = (rf"$k$ = {params['shape_k']:.2f}, "
-                rf"$\theta$ = {params['scale_theta']:.2f}")
+    sample_stats = selected.get("sample_moments")
+    if sample_stats is None:
+        raise ValueError("Observed transition sample statistics were not supplied.")
 
-    elif name == "Weibull":
-        title = "Fitted Weibull PDF"
-        info = (rf"$k$ = {params['shape_k']:.2f}, "
-                rf"$scale$ = {params['scale_lambda']:.2f}")
-
-    else:
-        title = "Fitted Beta PDF"
-        info = rf"$a$ = {params['a']:.2f}, $b$ = {params['b']:.2f}"
-    avg, _std, cov = get_fitted_transition_moments(density_fit)
-    return f"{title}\n{info}\nMean = {avg:.1f} years\nCOV = {cov:.2f}"
+    return (f"{titles[dist_name]}\n"
+            f"Mean = {sample_stats['mean']:.1f} years\n"
+            f"COV = {sample_stats['cov']:.2f}")
 
 
 def compute_transition_fits(transition_df, hist_df):
     """Reference five candidate MLE fits and independent held-out GOF tests."""
-    observed = transition_df.loc[transition_df["Transition_Flag"]]
-    groups = {
-        "To_FFF": ("PFF->FFF", "PSF->FFF"),
-        "To_CSF": ("PFF->PSF", "FFF->PSF"),
-    }
     fit_results = {}
     tables = []
     summary = []
-    for target, modes in groups.items():
-        yr = observed.loc[observed["Transition_Type"].isin(modes),
-                          "Transition_Year"].to_numpy(dtype=float)
+    for target in TRANSITION_TIME_TARGET_TYPES:
+        yr = get_target_observed_transition_years(transition_df, target)
+        sample_stats = get_observed_transition_sample_moments(yr)
         selected, fits = _fit_transition_times_best_distribution(
             yr, bin_width=float(TRANSITION_HIST_BIN_WIDTH), max_year=100.0)
         if selected is not None:
+            selected["sample_moments"] = sample_stats
             g = hist_df.loc[hist_df["Target_Group"] == target].sort_values("Bin_Start")
             if not g.empty:
                 width = (g["Bin_End"] - g["Bin_Start"]).to_numpy(dtype=float)
                 observed_density = g["Probability_within_group"].to_numpy(dtype=float) / width
                 # AIC selects the distribution FAMILY. The independent 5-year
-                # density LS fit supplies the plotted curve, all legend values,
-                # and all BestFit_* Excel parameters and moments.
+                # density LS fit supplies the plotted curve and fitted
+                # parameters. Legend Mean/COV and Excel moments are empirical.
                 selected["density_fit"] = fit_transition_density_binaverage_independent(
                     selected, observed_density,
                     bin_width=float(TRANSITION_HIST_BIN_WIDTH), max_year=100.0)
@@ -2557,16 +2588,16 @@ def compute_transition_fits(transition_df, hist_df):
             fits.insert(0, "Target_Group", target)
             tables.append(fits)
         row = {"Target_Group": target, "N_Observed": int(yr.size),
-               "Distribution": selected["name"] if selected else "Not fitted"}
+               "Distribution": selected["name"] if selected else "Not fitted",
+               "Mean_Sample_Years": sample_stats["mean"],
+               "Std_Sample_Years": sample_stats["std"],
+               "COV_Sample": sample_stats["cov"]}
         if selected:
             row.update({"AIC": selected["aic"], "BIC": selected["bic"],
                         "GOF_Pvalue": selected.get("gof_pvalue", np.nan)})
             dfit = selected.get("density_fit")
             if dfit is None:
                 raise ValueError(f"{target}: missing independent 5-year density fit")
-            mean_fit, std_fit, cov_fit = get_fitted_transition_moments(dfit)
-            row.update({"Mean_Fitted_Years": mean_fit,
-                        "Std_Fitted_Years": std_fit, "COV_Fitted": cov_fit})
             row.update(dfit["params"])
             if dfit["name"] == "Lognormal":
                 row["lambda"] = float(np.log(dfit["params"]["scale"]))
@@ -2602,7 +2633,8 @@ TRANSITION_TIME_BAR_EDGE_LINEWIDTH = 0.5    # histogram bar outlines (pt)
 # Only the appearance of the two transition-time legends is changed.
 TRANSITION_LEGEND_LINE_LENGTH_PT = 18.0      # Colored line before "Fitted ... PDF"
 TRANSITION_LEGEND_LINE_TEXT_GAP_PT = 4.0     # Line-to-text spacing
-TRANSITION_LEGEND_ROW_GAP_PT = -0.6          # Smaller = more compact four-line legend
+TRANSITION_LEGEND_ROW_GAP_PT = -0.6          # Tight vertical gap between Mean and COV (pt)
+TRANSITION_LEGEND_TITLE_TO_MEAN_GAP_PT = 6.0  # Extra gap after Fitted ... PDF, before Mean (pt)
 TRANSITION_LEGEND_CORNER_INSET = 0.04     # Distance from the top/corner in axes fraction
 
 
@@ -2628,17 +2660,17 @@ def get_transition_fitted_curve(histogram_rows, selected_fit):
 
 
 def draw_compact_transition_legend(ax, fit_label, line_color, target, *, dashboard=False):
-    """Four-line legend; the short colored line aligns with the FIRST text line.
+    """Three-line legend with separate title-to-Mean and Mean-to-COV spacing.
 
-    Matplotlib's regular multi-line legend puts the handle at the vertical center
-    of the whole label, while four separate legend entries introduce unwanted
-    line spacing.  An anchored, compact four-row layout avoids both issues and
-    permits precise top-right (FFF) / top-left (CSF) placement.
+    The short colored line aligns with the fitted distribution name.
+    FFF is upper-right; CSF is upper-left.
     """
     from matplotlib.lines import Line2D
     from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, HPacker, TextArea, VPacker
 
     rows = str(fit_label).split("\n")
+    if len(rows) != 3:
+        raise ValueError("Transition legend must contain title, sample Mean and sample COV.")
     font_size = (DASHBOARD_PLOT_LEGEND_FONT_PT if dashboard
                  else TRANSITION_TIME_LEGEND_FONT)
     handle_length = TRANSITION_LEGEND_LINE_LENGTH_PT
@@ -2647,7 +2679,7 @@ def draw_compact_transition_legend(ax, fit_label, line_color, target, *, dashboa
     packed_rows = []
 
     for i, text in enumerate(rows):
-        # Identical left-hand space on all four lines aligns each text baseline.
+        # Identical left-hand space on all three lines aligns the text baselines.
         swatch = DrawingArea(handle_length, row_height, 0, 0)
         if i == 0:
             swatch.add_artist(Line2D([0, handle_length], [row_height * 0.50] * 2,
@@ -2659,8 +2691,13 @@ def draw_compact_transition_legend(ax, fit_label, line_color, target, *, dashboa
         packed_rows.append(HPacker(children=[swatch, text_area], align="center",
                                    pad=0.0, sep=handle_gap))
 
-    legend_contents = VPacker(children=packed_rows, align="left", pad=0.0,
-                              sep=TRANSITION_LEGEND_ROW_GAP_PT)
+    # Nest two statistic rows separately so the title-to-Mean spacing can be
+    # increased without also increasing the tighter Mean-to-COV spacing.
+    sample_stat_rows = VPacker(children=packed_rows[1:], align="left", pad=0.0,
+                               sep=TRANSITION_LEGEND_ROW_GAP_PT)
+    legend_contents = VPacker(children=[packed_rows[0], sample_stat_rows],
+                              align="left", pad=0.0,
+                              sep=TRANSITION_LEGEND_TITLE_TO_MEAN_GAP_PT)
     inset = TRANSITION_LEGEND_CORNER_INSET
     on_right = target == "To_FFF"
     anchored = AnchoredOffsetbox(
@@ -3053,25 +3090,36 @@ def get_transition_type_figure_data(transition_df):
     })
 
 
-def get_transition_time_target_figure_data(hist_df, selected_fits, target):
+def get_transition_time_target_figure_data(hist_df, selected_fits, target,
+                                           transition_df=None):
     """Export ONE histogram panel to its own sheet (FFF or CSF).
 
     Curve_Time_Year/Fitted_5Year_Average_Density_PerYear: the exact smooth
     fitted 5-year bin-average curve shown in the plot (1001 rows).
     Bin_*: the 20 five-year histogram bins actually used for the plotted bars.
     These occupy the first 20 rows, with remaining bin cells blank.
-    Fitted distribution statistics are metadata in the first data row.
+    Empirical sample statistics and fitted parameters appear in row 1 metadata.
     Bin_Probability_WithinTarget remains the original 5-year-bin probability;
     Bin_Probability_Density_PerYear is the ACTUAL bar height shown in the GUI.
     Keeping both allows users to verify bin probability = density * bin width.
     Fit_5Year_Bin_Probability and Fit_5Year_Average_Density_PerYear are
     derived from a SEPARATE fit to 5-y bin-average observed densities,
-    following the provided independent-density reference.
+    following the provided independent-density reference. The sample moments
+    are computed from the original observed transition years, not that fit.
     """
     if target not in ("To_FFF", "To_CSF"):
         raise ValueError(f"Unexpected transition target: {target}")
     g = hist_df.loc[hist_df["Target_Group"] == target].sort_values("Bin_Start")
     selected = selected_fits.get(target)
+    if transition_df is not None:
+        # Always use the exact observed first-transition years, including when
+        # the sample is too small to fit a parametric probability density.
+        sample_stats = get_observed_transition_sample_moments(
+            get_target_observed_transition_years(transition_df, target))
+    elif selected is not None and "sample_moments" in selected:
+        sample_stats = selected["sample_moments"]
+    else:
+        sample_stats = {"count": 0, "mean": np.nan, "std": np.nan, "cov": np.nan}
     curve_x, curve_y = get_transition_fitted_curve(g, selected)
     # Retain the full horizontal coordinates even if no curve can be fitted,
     # in which case the figure shows only the histogram and an annotation.
@@ -3113,16 +3161,20 @@ def get_transition_time_target_figure_data(hist_df, selected_fits, target):
     output.loc[0, "Fit_Method"] = "Independent least squares of 5-year mean densities"
     output.loc[0, "Curve_Method"] = "Reference PCHIP: fitted bin centers, endpoints (0,0) and (100,0)"
     output.loc[0, "Legend_Statistics_Method"] = (
-        "Independent five-year bin-average density LS fitted distribution, "
-        "conditional 0-100-year integer-year moments"
+        "Observed first-transition time samples for this target within 0-100 years; "
+        "Mean=sample average, Std=np.std(ddof=0), COV=Std/Mean. "
+        "Fitted distribution parameters still describe the fitted density curve."
     )
+    output.loc[0, "Sample_Count"] = int(sample_stats["count"])
+    output.loc[0, "Sample_Mean_Year"] = sample_stats["mean"]
+    output.loc[0, "Sample_Std_Year"] = sample_stats["std"]
+    output.loc[0, "Sample_COV"] = sample_stats["cov"]
     if selected is None:
         output.loc[0, "BestFit_Distribution"] = "Not fitted (insufficient observations)"
     else:
         dfit = selected.get("density_fit")
         if dfit is None:
             raise ValueError(f"{target}: missing density fit for Excel export")
-        mean, std, cov = get_fitted_transition_moments(dfit)
         output.loc[0, "BestFit_Distribution"] = dfit["name"]
         output.loc[0, "BestFit_Parameters"] = "; ".join(
             f"{name}={value:.9g}" for name, value in dfit["params"].items()
@@ -3134,9 +3186,6 @@ def get_transition_time_target_figure_data(hist_df, selected_fits, target):
         if dfit["name"] == "Lognormal":
             output.loc[0, "BestFit_Param_lambda"] = float(np.log(dfit["params"]["scale"]))
             output.loc[0, "BestFit_Param_zeta"] = float(dfit["params"]["sigma_ln"])
-        output.loc[0, "BestFit_Mean_Year"] = mean
-        output.loc[0, "BestFit_Std_Year"] = std
-        output.loc[0, "BestFit_COV"] = cov
         output.loc[0, "BestFit_Legend_Text"] = format_fitted_legend(selected)
         output.loc[0, "BestFit_Fit_Method"] = dfit["fit_method"]
         output.loc[0, "Independent_DensityFit_Parameters"] = output.loc[0, "BestFit_Parameters"]
@@ -3200,9 +3249,9 @@ def build_eight_figure_export_tables(result, sd_cov, selected_fits,
             YEARS_FULL, result["corr_long"], result["corr_stir"]),
         "02_SFM_Probabilities": annual,
         "03_TimeDist_to_FFF": get_transition_time_target_figure_data(
-            result["hist_df"], selected_fits, "To_FFF"),
+            result["hist_df"], selected_fits, "To_FFF", result["transition_df"]),
         "04_TimeDist_to_CSF": get_transition_time_target_figure_data(
-            result["hist_df"], selected_fits, "To_CSF"),
+            result["hist_df"], selected_fits, "To_CSF", result["transition_df"]),
         "05_Scour_Depth": get_scour_figure_data(
             YEARS_FULL, result["samples_dict"], sd_cov),
         "06_Transition_Types": get_transition_type_figure_data(result["transition_df"]),
