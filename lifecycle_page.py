@@ -263,8 +263,13 @@ plt.rcParams["svg.fonttype"] = "none"
 # ============================================================
 # GUI presentation controls (edit these values as needed)
 # ============================================================
-FORMULA_BAR_HEIGHT_PX = 100       # Single-formula toolbar minimum height (px)
-FORMULA_SPACING_EM = 3.0         # Spaces between the four expressions (em)
+FORMULA_BAR_HEIGHT_PX = 142       # Formula reference panel minimum height (px)
+FORMULA_SPACING_EM = 1.5          # Horizontal spacing BETWEEN the four aligned formulas (em)
+FORMULA_TITLE_PADDING_EM = 0.25   # Extra horizontal room around each heading (em)
+FORMULA_HEADING_ROW_GAP_EM = 1.1  # Distance between captions and formulas (em)
+GLOSSARY_ROW_PADDING_TOP_PX = 8     # Space ABOVE each parameter/description (px)
+GLOSSARY_ROW_PADDING_BOTTOM_PX = 11 # Space BELOW each parameter, BEFORE the divider (px)
+GLOSSARY_ROW_GAP_PX = 1.40             # Space after the divider (px)
 PARAMETER_ROW_GAP_REM = 0.22     # Vertical gap between parameter rows (rem)
 PARAMETER_NAME_SHIFT_PX = -8      # Positive = move parameter symbols downward (px)
 
@@ -400,22 +405,6 @@ def inject_css():
             line-height: 1.2;
             margin: 0;
             color: #444;
-        }
-        /* Environmental-zone caption uses the same face and weight as
-           the Parameter/Distribution/Mean table headings. */
-        .environment-zone-label {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            height: 40px;
-            min-height: 40px;
-            padding-right: 4px;
-            font-family: 'Times New Roman', serif !important;
-            font-size: clamp(14px, .98vw, 17px) !important;
-            font-weight: 600;
-            color: #333;
-            white-space: nowrap;
-            line-height: 1.2;
         }
         /* All 35 Parameter labels: bold KaTeX glyphs, exactly centered
            vertically in the same 40px row as select/number-input controls. */
@@ -666,6 +655,189 @@ def inject_css():
             line-height: 1.5;
             padding: 4px 2px;
         }
+        /* Bottom-of-dashboard mathematical formulas and reference material. */
+        /* Match the exact typography used by Simulation results. */
+        .section-header,
+        .reference-section-title,
+        .reference-card-title {
+            font-family: 'Times New Roman', serif !important;
+            font-size: clamp(15px, 1.12vw, 19px) !important;
+            font-weight: 700 !important;
+            line-height: 1.16 !important;
+            color: #D70051;
+        }
+        .reference-section-title {
+            margin: 14px 0 8px;
+            padding: 0 0 6px;
+            border-bottom: 1px solid #d9dce0;
+        }
+        .reference-card-title {
+            padding: 1px 0 9px;
+            margin: 0 0 10px;
+            border-bottom: 1px solid #dedfe2;
+        }
+        /* One valid KaTeX array: standard {cccc} columns, no unsupported @{}
+           column modifiers. Each caption shares the center of its equation. */
+        .st-key-equation_toolbar {
+            box-sizing: border-box;
+            min-height: __FORMULA_BAR_HEIGHT_PX__px !important;
+            padding: 4px 0 5px !important;
+            overflow: visible !important;
+        }
+        .st-key-equation_toolbar [data-testid="stLatex"] {
+            box-sizing: border-box;
+            width: 100% !important;
+            min-height: 118px !important;
+            padding: 25px 9px 25px !important;
+            margin: 0 !important;
+            overflow-x: auto !important;
+            overflow-y: auto !important;
+        }
+        .st-key-equation_toolbar [data-testid="stLatex"] .katex-display {
+            box-sizing: border-box;
+            width: max-content;
+            min-width: 100%;
+            padding: 6px 4px !important;
+            margin: 0 auto !important;
+            overflow: visible !important;
+        }
+        .st-key-equation_toolbar [data-testid="stLatex"] .katex {
+            font-size: clamp(11px, .79vw, 16px) !important;
+            white-space: nowrap;
+        }
+        /* Parameter glossary: both main columns must START at the same height.
+           Previous align-items:center vertically centered the entire 17-row
+           structural column alongside the 18-row right column. */
+        .st-key-parameter_glossary [data-testid="stHorizontalBlock"] {
+            align-items: flex-start !important;
+            gap: .55rem !important;
+        }
+        .glossary-group-title {
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            width: 100%;
+            min-height: 36px;
+            font: 700 clamp(14px, .94vw, 17px) 'Times New Roman', serif !important;
+            line-height: 1.18;
+            color: #464b52;
+            background: #f4f5f7;
+            padding: 7px 11px;
+            border-radius: 5px;
+            margin: 0 0 7px !important;
+        }
+        /* Each glossary parameter is its own native Streamlit container.
+           This keeps KaTeX symbols and descriptions in the SAME row and gives
+           the requested thin separator and editable vertical breathing space. */
+        .st-key-parameter_glossary [class*="st-key-glossary_row_"] {
+            box-sizing: border-box !important;
+            border-bottom: 1px solid #dce1e7 !important;
+            border-radius: 0 !important;
+            margin: 0 0 __GLOSSARY_ROW_GAP_PX__px !important;
+            padding: __GLOSSARY_ROW_PADDING_TOP_PX__px 4px __GLOSSARY_ROW_PADDING_BOTTOM_PX__px !important;
+            width: 100% !important;
+        }
+        .st-key-parameter_glossary [class*="st-key-glossary_row_"] [data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+            row-gap: 0 !important;
+        }
+        .st-key-parameter_glossary [class*="st-key-glossary_row_"] [data-testid="stHorizontalBlock"] {
+            align-items: center !important;
+            gap: .55rem !important;
+        }
+        .st-key-parameter_glossary [class*="st-key-glossary_row_"] [data-testid="stMarkdownContainer"] p:has(.katex) {
+            min-height: 31px;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .st-key-parameter_glossary [class*="st-key-glossary_row_"] [data-testid="stMarkdownContainer"] p .katex {
+            font-size: clamp(13px, .95vw, 17px) !important;
+            font-weight: 700 !important;
+        }
+        .glossary-meaning {
+            box-sizing: border-box;
+            min-height: 31px;
+            display: flex;
+            align-items: center;
+            padding: 0 4px !important;
+            margin: 0 !important;
+            line-height: 1.35;
+            font: 400 clamp(13px, .86vw, 15px) 'Times New Roman', serif !important;
+            color: #4b5563;
+            overflow-wrap: anywhere;
+        }
+        .st-key-parameter_glossary [data-testid="stVerticalBlock"] {
+            gap: .08rem !important;
+        }
+        /* Outer pair stretches to the taller side. The description card then
+           fills the available column height, while its rows keep the above
+           adjustable padding and the separator below every parameter. */
+        .st-key-reference_materials [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]) {
+            align-items: stretch !important;
+        }
+        .st-key-reference_materials [data-testid="stColumn"]:has(.st-key-parameter_glossary) {
+            display: flex !important;
+            flex-direction: column !important;
+            align-self: stretch !important;
+        }
+        .st-key-reference_materials [data-testid="stColumn"]:has(.st-key-parameter_glossary) > [data-testid="stVerticalBlock"] {
+            height: 100% !important;
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+        .st-key-reference_materials [data-testid="stColumn"]:has(.st-key-parameter_glossary)
+        [data-testid="stElementContainer"]:has(.st-key-parameter_glossary) {
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+        .st-key-reference_materials .st-key-parameter_glossary {
+            flex: 1 1 auto !important;
+            min-height: 100% !important;
+        }
+        @media(max-width: 900px) {
+            .glossary-meaning { font-size: 13px !important; }
+        }
+        /* Two main actions: larger and bold labels, without affecting other inputs. */
+        .st-key-simulate_action [data-testid="stButton"] button,
+        .st-key-download_action [data-testid="stDownloadButton"] button {
+            min-height: 48px !important;
+            font-family: 'Times New Roman', serif !important;
+            font-size: clamp(18px, 1.2vw, 22px) !important;
+            font-weight: 700 !important;
+            line-height: 1.2 !important;
+        }
+        .st-key-simulate_action button *,
+        .st-key-download_action button * {
+            font-family: 'Times New Roman', serif !important;
+            font-size: inherit !important;
+            font-weight: 700 !important;
+        }
+        .st-key-sfm_reference [data-testid="stImage"] img,
+        .st-key-schematic_reference [data-testid="stImage"] img {
+            max-width: 100%;
+            height: auto;
+            object-fit: contain;
+        }
+        .dashboard-author-footer {
+            border-top: 1px solid #d9dce0;
+            margin: 18px auto 3px;
+            padding: 15px 8px 5px;
+            font: 700 clamp(13px, .9vw, 16px) 'Times New Roman', serif !important;
+            text-align: center;
+            color: #525862;
+            line-height: 1.6;
+        }
+        .author-contact-gap { display: inline-block; width: 28px; }
+        @media(max-width: 900px) {
+            .glossary-columns { grid-template-columns: minmax(0, 1fr); }
+            .author-contact-gap { width: 12px; }
+        }
         @media(max-width: 1250px) {
             .col-header { font-size: 11px; }
             .parameter-range { font-size: 11px; }
@@ -674,6 +846,9 @@ def inject_css():
         </style>
         """
         .replace("__FORMULA_BAR_HEIGHT_PX__", str(FORMULA_BAR_HEIGHT_PX))
+        .replace("__GLOSSARY_ROW_PADDING_TOP_PX__", str(GLOSSARY_ROW_PADDING_TOP_PX))
+        .replace("__GLOSSARY_ROW_PADDING_BOTTOM_PX__", str(GLOSSARY_ROW_PADDING_BOTTOM_PX))
+        .replace("__GLOSSARY_ROW_GAP_PX__", str(GLOSSARY_ROW_GAP_PX))
         .replace("__PARAM_ROW_GAP_REM__", str(PARAMETER_ROW_GAP_REM))
         .replace("__PARAM_NAME_SHIFT_PX__", str(PARAMETER_NAME_SHIFT_PX))
         .replace("__MAIN_TITLE_MAX_PX__", str(MAIN_TITLE_FONT_MAX_PX))
@@ -1570,7 +1745,7 @@ PARAMETER_MATH_LABELS = {
     "Dp": r"D_p\,\mathrm{(m)}",
     "rho_pl": r"\rho_{p,l}",
     "rho_ps": r"\rho_{p,s}",
-    "S_Dp": r"S\,(D_p)",
+    "S_Dp": r"S_p/D_p",
     "fyl": r"f_{yl}\,\mathrm{(MPa)}",
     "fyt": r"f_{ys}\,\mathrm{(MPa)}",
     "fc": r"f_c\,\mathrm{(MPa)}",
@@ -1583,7 +1758,7 @@ PARAMETER_MATH_LABELS = {
     "kt": r"k_t",
     "ke": r"k_e",
     "n_val": r"n",
-    "X1": r"X_1",
+    "X1": r"X_I",
     "R": r"R",
     "lam_corr": r"\lambda_{corr}",
     "SD_val": r"SD\,\mathrm{(m)}",
@@ -2144,6 +2319,150 @@ def make_transition_type_plot(transition_df):
     return fig
 
 
+def fit_transition_density_binaverage_independent(selected_probability, observed_density,
+                                                   bin_width=5.0, max_year=100.0):
+    """对5年区间平均密度单独进行最小二乘参数估计，不复用概率图的MLE参数。
+
+    为便于两图直接对比，分布族保持与概率图AIC选中的分布一致；只独立
+    估计该分布族的参数。观测/模型密度都是：5年分组条件概率 / 5年。
+    区间理论概率沿用原代码的整数年边界0/4.5/9.5/.../100，保证
+    概率图、密度图的统计年份完全一致。不同拟合损失可能产生不同参数，
+    但两组参数也有可能在数值上接近，不会人为强制差异。
+    """
+    from scipy.optimize import minimize
+
+    if selected_probability is None:
+        return None
+    name = str(selected_probability['name'])
+    old = selected_probability['params']
+    observed_density = np.asarray(observed_density, dtype=float)
+    edges, cuts = _gof_group_cutpoints(float(max_year), float(bin_width))
+    if len(observed_density) != len(cuts)-1:
+        raise ValueError('区间概率密度长度与5年分组不一致')
+    if not np.all(np.isfinite(observed_density)) or np.any(observed_density < 0):
+        raise ValueError('观测区间密度中存在非法数值')
+    if not np.isclose(observed_density.sum() * bin_width, 1.0, atol=1e-8):
+        raise ValueError('观测区间平均密度的积分面积不为1')
+
+    if name == 'Normal':
+        initial = np.array([float(old['mu']), np.log(float(old['sigma']))])
+        bounds = [(-150.0, 250.0), (np.log(0.05), np.log(1000.0))]
+        def make_dist(v):
+            mu, sigma = float(v[0]), float(np.exp(v[1]))
+            return stats.norm(loc=mu, scale=sigma), {'mu':mu, 'sigma':sigma}
+    elif name == 'Lognormal':
+        initial = np.log([float(old['sigma_ln']), float(old['scale'])])
+        bounds = [(np.log(0.05), np.log(10.0)), (np.log(0.05), np.log(2000.0))]
+        def make_dist(v):
+            sigma_ln, scale = map(float, np.exp(v))
+            return stats.lognorm(s=sigma_ln, loc=0, scale=scale), {'sigma_ln':sigma_ln, 'scale':scale}
+    elif name == 'Gamma':
+        initial = np.log([float(old['shape_k']), float(old['scale_theta'])])
+        bounds = [(np.log(0.02), np.log(120.0)), (np.log(0.02), np.log(10000.0))]
+        def make_dist(v):
+            k, theta = map(float, np.exp(v))
+            return stats.gamma(a=k, loc=0, scale=theta), {'shape_k':k, 'scale_theta':theta}
+    elif name == 'Weibull':
+        initial = np.log([float(old['shape_k']), float(old['scale_lambda'])])
+        bounds = [(np.log(0.05), np.log(50.0)), (np.log(0.1), np.log(5000.0))]
+        def make_dist(v):
+            k, scale = map(float, np.exp(v))
+            return stats.weibull_min(c=k, loc=0, scale=scale), {'shape_k':k, 'scale_lambda':scale}
+    elif name == 'Beta_0_100':
+        initial = np.log([float(old['a']), float(old['b'])])
+        bounds = [(np.log(0.02), np.log(200.0)), (np.log(0.02), np.log(200.0))]
+        def make_dist(v):
+            a, b = map(float, np.exp(v))
+            return stats.beta(a=a, b=b, loc=0, scale=max_year), {'a':a, 'b':b}
+    else:
+        raise ValueError(f'不支持的区间密度拟合分布: {name}')
+
+    interval_mass = selected_probability['interval_mass']
+    normalization = max(float(np.sum(observed_density**2)), 1e-12)
+
+    def objective(v):
+        try:
+            dist, _ = make_dist(v)
+            prob = interval_mass(dist, cuts[:-1], cuts[1:])
+            if prob is None:
+                return 1e12
+            expected_density = np.asarray(prob, dtype=float) / bin_width
+            if not np.all(np.isfinite(expected_density)):
+                return 1e12
+            return float(np.sum((expected_density - observed_density)**2) / normalization)
+        except (ValueError, FloatingPointError, OverflowError):
+            return 1e12
+
+    lo = np.array([v[0] for v in bounds]); hi = np.array([v[1] for v in bounds])
+    starts = [initial, initial + np.array([0.25, -0.25]), initial + np.array([-0.25, 0.25])]
+    best = None
+    for guess in starts:
+        solution = minimize(objective, np.clip(guess, lo, hi), method='L-BFGS-B',
+                            bounds=bounds, options={'maxiter':650, 'ftol':1e-13})
+        if np.isfinite(solution.fun) and (best is None or solution.fun < best.fun):
+            best = solution
+    if best is None or best.fun >= 1e10:
+        raise RuntimeError(f'{name}: 5年平均密度独立拟合未得到有效结果')
+
+    dist, params = make_dist(best.x)
+    fit_mass = interval_mass(dist, cuts[:-1], cuts[1:])
+    fit_mass = np.asarray(fit_mass, dtype=float)
+    fitted_density = fit_mass / bin_width
+    rmse = float(np.sqrt(np.mean((fitted_density - observed_density)**2)))
+    return {
+        'name': name,
+        'params': params,
+        'distribution': dist,
+        'interval_mass': interval_mass,
+        'bin_probability': fit_mass,
+        'bin_average_density': fitted_density,
+        'density_rmse': rmse,
+        'normalized_sse': float(best.fun),
+        'fit_method': 'Independent least squares of 5-year conditional bin-average densities',
+    }
+
+
+def get_fitted_five_year_bin_density(selected):
+    """5-year fitted densities from the *independent density-LS fit*.
+
+    The independently fitted density parameters also supply every displayed
+    legend statistic and every BestFit_* field in the Excel export.
+    """
+    if selected is None or selected.get("density_fit") is None:
+        return None, None, None
+    density_fit = selected["density_fit"]
+    width = float(TRANSITION_HIST_BIN_WIDTH)
+    edges = np.arange(0.0, 100.0 + width * 0.5, width)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    mass = np.asarray(density_fit["bin_probability"], dtype=float)
+    density = np.asarray(density_fit["bin_average_density"], dtype=float)
+    if (mass.size != centers.size or density.size != centers.size
+            or not np.all(np.isfinite(density))):
+        return None, None, None
+    return centers, density, mass
+
+
+def _five_year_average_fitted_curve(selected):
+    """Reference implementation: PCHIP through independently fitted 5-y densities.
+
+    Center nodes equal the independent least-squares fitted average density;
+    both endpoints are closed to zero, exactly as in the uploaded reference.
+    """
+    from scipy.interpolate import PchipInterpolator
+
+    centers, fitted_density, _ = get_fitted_five_year_bin_density(selected)
+    if centers is None:
+        return None, None
+    x_knots = np.r_[0.0, centers, 100.0]
+    y_knots = np.r_[0.0, fitted_density, 0.0]
+    x_curve = np.linspace(0.0, 100.0, 1001)
+    y_curve = np.maximum(0.0, PchipInterpolator(
+        x_knots, y_knots, extrapolate=False)(x_curve))
+    y_curve[0] = 0.0
+    y_curve[-1] = 0.0
+    return x_curve, y_curve
+
+
 def get_fitted_transition_moments(selected):
     """Mean and COV of the fitted 0–100 year conditional integer-year model.
 
@@ -2169,13 +2488,16 @@ def get_fitted_transition_moments(selected):
 
 
 def format_fitted_legend(selected):
-    """SCI-style fitted PDF legend, matching the example: no histogram legend.
+    """Four-line SCI legend from the SAME density-LS model used by the curve.
 
-    Mean and COV remain the fitted conditional integer-year moments already
-    used in the GUI; fitting and probability calculation are not modified.
+    Family selection is still based on original AIC; parameters and conditional
+    0--100-year mean/STD/COV are exclusively from the independent density fit.
     """
-    name = selected["name"]
-    params = selected["params"]
+    density_fit = selected.get("density_fit") if selected is not None else None
+    if density_fit is None:
+        raise ValueError("The transition-time legend requires a fitted 5-year density model.")
+    name = density_fit["name"]
+    params = density_fit["params"]
     if name == "Normal":
         title = "Fitted normal PDF"
         info = rf"$\mu$ = {params['mu']:.2f}, $\sigma$ = {params['sigma']:.2f}"
@@ -2199,7 +2521,7 @@ def format_fitted_legend(selected):
     else:
         title = "Fitted Beta PDF"
         info = rf"$a$ = {params['a']:.2f}, $b$ = {params['b']:.2f}"
-    avg, _std, cov = get_fitted_transition_moments(selected)
+    avg, _std, cov = get_fitted_transition_moments(density_fit)
     return f"{title}\n{info}\nMean = {avg:.1f} years\nCOV = {cov:.2f}"
 
 
@@ -2218,6 +2540,17 @@ def compute_transition_fits(transition_df, hist_df):
                           "Transition_Year"].to_numpy(dtype=float)
         selected, fits = _fit_transition_times_best_distribution(
             yr, bin_width=float(TRANSITION_HIST_BIN_WIDTH), max_year=100.0)
+        if selected is not None:
+            g = hist_df.loc[hist_df["Target_Group"] == target].sort_values("Bin_Start")
+            if not g.empty:
+                width = (g["Bin_End"] - g["Bin_Start"]).to_numpy(dtype=float)
+                observed_density = g["Probability_within_group"].to_numpy(dtype=float) / width
+                # AIC selects the distribution FAMILY. The independent 5-year
+                # density LS fit supplies the plotted curve, all legend values,
+                # and all BestFit_* Excel parameters and moments.
+                selected["density_fit"] = fit_transition_density_binaverage_independent(
+                    selected, observed_density,
+                    bin_width=float(TRANSITION_HIST_BIN_WIDTH), max_year=100.0)
         fit_results[target] = selected
         if not fits.empty:
             fits = fits.copy()
@@ -2228,10 +2561,20 @@ def compute_transition_fits(transition_df, hist_df):
         if selected:
             row.update({"AIC": selected["aic"], "BIC": selected["bic"],
                         "GOF_Pvalue": selected.get("gof_pvalue", np.nan)})
-            mean_fit, std_fit, cov_fit = get_fitted_transition_moments(selected)
+            dfit = selected.get("density_fit")
+            if dfit is None:
+                raise ValueError(f"{target}: missing independent 5-year density fit")
+            mean_fit, std_fit, cov_fit = get_fitted_transition_moments(dfit)
             row.update({"Mean_Fitted_Years": mean_fit,
                         "Std_Fitted_Years": std_fit, "COV_Fitted": cov_fit})
-            row.update(selected["params"])
+            row.update(dfit["params"])
+            if dfit["name"] == "Lognormal":
+                row["lambda"] = float(np.log(dfit["params"]["scale"]))
+                row["zeta"] = float(dfit["params"]["sigma_ln"])
+            row["Fit_Method"] = dfit["fit_method"]
+            row["Density_Fit_RMSE"] = dfit["density_rmse"]
+            row["Density_Fit_Parameters"] = "; ".join(
+                f"{k}={v:.9g}" for k, v in dfit["params"].items())
         summary.append(row)
     return fit_results, (pd.concat(tables, ignore_index=True) if tables else pd.DataFrame()), pd.DataFrame(summary)
 
@@ -2255,6 +2598,13 @@ TRANSITION_TIME_TICK_LENGTH = 3.5            # tick length (pt)
 TRANSITION_TIME_FIT_LINEWIDTH = 2.0          # fitted probability curve (pt)
 TRANSITION_TIME_BAR_EDGE_LINEWIDTH = 0.5    # histogram bar outlines (pt)
 
+# Transition-time figure legends. All dimensions are Matplotlib points unless noted.
+# Only the appearance of the two transition-time legends is changed.
+TRANSITION_LEGEND_LINE_LENGTH_PT = 18.0      # Colored line before "Fitted ... PDF"
+TRANSITION_LEGEND_LINE_TEXT_GAP_PT = 4.0     # Line-to-text spacing
+TRANSITION_LEGEND_ROW_GAP_PT = -0.6          # Smaller = more compact four-line legend
+TRANSITION_LEGEND_CORNER_INSET = 0.04     # Distance from the top/corner in axes fraction
+
 
 def apply_transition_time_font_sizes(ax):
     """Override global academic typography only on the transition-time panel."""
@@ -2271,28 +2621,61 @@ def apply_transition_time_font_sizes(ax):
 
 
 def get_transition_fitted_curve(histogram_rows, selected_fit):
-    """Return EXACTLY the fitted curve shown on the transition-time panel."""
-    from scipy.interpolate import PchipInterpolator
-
+    """Independent 5-year density LS + reference PCHIP, shared by plot/Excel."""
     if selected_fit is None or histogram_rows.empty:
         return None, None
-    _, cuts = _gof_group_cutpoints(100.0, TRANSITION_HIST_BIN_WIDTH)
-    probs = selected_fit["interval_mass"](
-        selected_fit["distribution"], cuts[:-1], cuts[1:])
-    if probs is None or not np.isfinite(probs).all():
-        return None, None
-    probs = np.asarray(probs, dtype=float)
-    centers = histogram_rows["Bin_Center"].to_numpy(dtype=float)
-    curve_x = np.linspace(0.0, 100.0, 1001)
-    curve_y = np.maximum(0.0, PchipInterpolator(
-        np.r_[0., centers, 100.], np.r_[0., probs, 0.])(curve_x))
-    curve_y[0] = curve_y[-1] = 0.0
-    return curve_x, curve_y
+    return _five_year_average_fitted_curve(selected_fit)
+
+
+def draw_compact_transition_legend(ax, fit_label, line_color, target, *, dashboard=False):
+    """Four-line legend; the short colored line aligns with the FIRST text line.
+
+    Matplotlib's regular multi-line legend puts the handle at the vertical center
+    of the whole label, while four separate legend entries introduce unwanted
+    line spacing.  An anchored, compact four-row layout avoids both issues and
+    permits precise top-right (FFF) / top-left (CSF) placement.
+    """
+    from matplotlib.lines import Line2D
+    from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, HPacker, TextArea, VPacker
+
+    rows = str(fit_label).split("\n")
+    font_size = (DASHBOARD_PLOT_LEGEND_FONT_PT if dashboard
+                 else TRANSITION_TIME_LEGEND_FONT)
+    handle_length = TRANSITION_LEGEND_LINE_LENGTH_PT
+    handle_gap = TRANSITION_LEGEND_LINE_TEXT_GAP_PT
+    row_height = font_size * 1.20
+    packed_rows = []
+
+    for i, text in enumerate(rows):
+        # Identical left-hand space on all four lines aligns each text baseline.
+        swatch = DrawingArea(handle_length, row_height, 0, 0)
+        if i == 0:
+            swatch.add_artist(Line2D([0, handle_length], [row_height * 0.50] * 2,
+                                     color=line_color,
+                                     linewidth=TRANSITION_TIME_FIT_LINEWIDTH))
+        text_area = TextArea(text, textprops={
+            "size": font_size, "color": "black", "fontproperties": GLOBAL_FONT_PROP,
+        })
+        packed_rows.append(HPacker(children=[swatch, text_area], align="center",
+                                   pad=0.0, sep=handle_gap))
+
+    legend_contents = VPacker(children=packed_rows, align="left", pad=0.0,
+                              sep=TRANSITION_LEGEND_ROW_GAP_PT)
+    inset = TRANSITION_LEGEND_CORNER_INSET
+    on_right = target == "To_FFF"
+    anchored = AnchoredOffsetbox(
+        loc="upper right" if on_right else "upper left", child=legend_contents,
+        pad=0.0, borderpad=0.0, frameon=False,
+        bbox_to_anchor=(1.0 - inset if on_right else inset, 1.0 - inset),
+        bbox_transform=ax.transAxes,
+    )
+    anchored.set_zorder(12)
+    ax.add_artist(anchored)
+    return anchored
 
 
 def make_transition_histogram_panel(hist_df, selected_fits, target_only=None):
-    """1x2 with 5-year conditional bin probabilities and exact reference fits."""
-    from matplotlib.lines import Line2D
+    """1x2 conditional 5-year average densities and grouped fitted curves."""
     fig, axes = (plt.subplots(1, 2, figsize=(10.8, 4.2), dpi=220)
                  if target_only is None
                  else plt.subplots(figsize=(4.3, 3.15), dpi=190))
@@ -2307,9 +2690,18 @@ def make_transition_histogram_panel(hist_df, selected_fits, target_only=None):
         axes = [axes]
     for ax, (target, title, color, line_color) in zip(axes, plot_cfg):
         g = hist_df.loc[hist_df["Target_Group"] == target].sort_values("Bin_Start")
+        # A 5-year bin probability is dimensionless; divide by its bin width
+        # to obtain the displayed density (1/year). This yields total
+        # histogram area = 1 for observed first transitions to this target.
+        bin_density = (
+            g["Probability_within_group"].to_numpy(dtype=float)
+            / (g["Bin_End"].to_numpy(dtype=float)
+               - g["Bin_Start"].to_numpy(dtype=float))
+        ) if not g.empty else np.empty(0, dtype=float)
         if not g.empty:
-            ax.bar(g["Bin_Center"], g["Probability_within_group"],
-                   width=TRANSITION_HIST_BIN_WIDTH, color=color,
+            ax.bar(g["Bin_Center"], bin_density,
+                   width=(g["Bin_End"] - g["Bin_Start"]).to_numpy(dtype=float),
+                   color=color,
                    edgecolor="black", linewidth=TRANSITION_TIME_BAR_EDGE_LINEWIDTH,
                    alpha=0.82, zorder=2)
         selected = selected_fits.get(target)
@@ -2328,14 +2720,12 @@ def make_transition_histogram_panel(hist_df, selected_fits, target_only=None):
                     fontproperties=GLOBAL_FONT_PROP,
                     fontsize=TRANSITION_TIME_NOTE_FONT)
         if selected is not None:
-            ax.legend(handles=[Line2D([], [], color=line_color,
-                                      linewidth=TRANSITION_TIME_FIT_LINEWIDTH,
-                                      label=fit_label)],
-                      loc="upper right" if target == "To_FFF" else "upper left",
-                      frameon=False, fontsize=TRANSITION_TIME_LEGEND_FONT,
-                      handlelength=1.6, handletextpad=0.5, borderaxespad=0.3)
-        ymax = max(float(g["Probability_within_group"].max()) if not g.empty else 0., max_fit)
-        set_dynamic_y_axis(ax, ymax, probability=True)
+            draw_compact_transition_legend(ax, fit_label, line_color, target,
+                                           dashboard=(target_only is not None))
+        ymax = max(float(np.max(bin_density)) if bin_density.size else 0., max_fit)
+        # Densities are not probabilities: keep the original upward-rounded
+        # y-axis ticks, but do not impose an artificial maximum of 1.0.
+        set_dynamic_y_axis(ax, ymax, probability=False)
         ax.set_xlim(0, 100)
         ax.set_xticks(np.arange(0, 101, 20))
         set_axis_labels(ax, r"Transition time, $t_{tran}$ (years)", "Probability density")
@@ -2447,6 +2837,18 @@ def make_all_sample_cdf_panel(cdf_df, threshold_df, target_only=None):
                    linewidth=dashed["linewidth"], zorder=2)
         upper_data = max(float(np.max(prob)), threshold)
         set_dynamic_y_axis(ax, upper_data, probability=True)
+        # CDF panels only: original "nice" upper limit, plus 0.10, capped at 1.
+        previous_upper = float(ax.get_ylim()[1])
+        cdf_upper = min(1.0, round(previous_upper + 0.10, 10))
+        ax.set_ylim(0.0, cdf_upper)
+        prior_ticks = np.asarray(ax.get_yticks(), dtype=float)
+        step = float(prior_ticks[1] - prior_ticks[0]) if prior_ticks.size > 1 else 0.1
+        if step > 0:
+            added_ticks = np.arange(previous_upper + step, cdf_upper + step * 0.25, step)
+            ticks = np.r_[prior_ticks[prior_ticks <= cdf_upper + 1e-9], added_ticks]
+            if not np.isclose(ticks, cdf_upper, atol=1e-8).any():
+                ticks = np.r_[ticks, cdf_upper]
+            ax.set_yticks(np.unique(np.round(ticks[ticks <= cdf_upper + 1e-9], 10)))
 
         if bool(tr["Reached_Within_100yr"]):
             first_yr = int(tr["First_Reaching_Year"])
@@ -2600,36 +3002,15 @@ def render_dashboard_results(results):
                     results["cdf_years_html"] + "</div>",
                     unsafe_allow_html=True)
 
-    # Download centered, full column width, immediately ABOVE the structure.
-    if "lifecycle_excel_data" in st.session_state:
-        _, download_col, _ = st.columns([1.35, 1.30, 1.35], gap="small")
-        with download_col:
-            st.download_button(
-                label="Download Results (Excel)",
-                data=st.session_state.lifecycle_excel_data,
-                file_name="Lifecycle_Assessment_Results.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-                width="stretch",
-            )
-
-    structure_path = Path(__file__).parent / "GUI_structure.png"
-    st.markdown("<div class='plot-title'>Structure Schematic</div>",
-                unsafe_allow_html=True)
-    if structure_path.exists():
-        _, center, _ = st.columns([1.5, 1.0, 1.5], gap="small")
-        with center:
-            st.image(str(structure_path), width="stretch")
-    else:
-        st.caption("GUI_structure.png not found in the script directory.")
 
 
 # ============================================================
-# 9b. Excel export: only the data behind the SIX visible figure groups.
-#     No individual Monte Carlo samples or per-sample transition rows.
+# 9b. Excel export: EIGHT independent worksheets, ONE per visible chart.
+#     Worksheet order strictly matches the Streamlit 2 x 4 chart arrangement.
+#     Plotted values are exported directly, with no sample-level MC database.
 # ============================================================
 def get_scour_figure_data(years, samples_dict, sd_cov):
-    """Theoretical mean and mean ± Std of the actual scour-depth FIGURE."""
+    """Theoretical mean and mean +/- Std actually shown in the scour chart."""
     x = np.asarray(years, dtype=float)
     def first(key):
         return float(np.asarray(samples_dict[key], dtype=float)[0])
@@ -2647,7 +3028,7 @@ def get_scour_figure_data(years, samples_dict, sd_cov):
 
 
 def get_corrosion_figure_data(years, corr_long, corr_stir):
-    """Actual mean and population ±1 Std curves (NOT sample medians)."""
+    """The plotted mean and population +/-1 Std curves for both bar classes."""
     data = {"Year": np.asarray(years, dtype=int)}
     for name, matrix in [("Transverse", corr_stir), ("Longitudinal", corr_long)]:
         mu = np.mean(matrix, axis=0)
@@ -2660,7 +3041,7 @@ def get_corrosion_figure_data(years, corr_long, corr_stir):
 
 
 def get_transition_type_figure_data(transition_df):
-    """Bar counts and probabilities, in exactly the chart's displayed order."""
+    """Bar chart categories in exactly the chart's displayed order."""
     vc = transition_df["Transition_Type"].value_counts()
     labels = [str(k).replace("PFF", "CFF").replace("PSF", "CSF")
               .replace("->", " to ").replace("No transition within 100 years", "No transition")
@@ -2672,73 +3053,300 @@ def get_transition_type_figure_data(transition_df):
     })
 
 
-def get_transition_time_figure_data(hist_df, selected_fits):
-    """One sheet for both panels: 5-y bars and their 0.1-y fitted curves.
+def get_transition_time_target_figure_data(hist_df, selected_fits, target):
+    """Export ONE histogram panel to its own sheet (FFF or CSF).
 
-    Bar data occupies the first 20 rows in the right-side columns, while
-    fitted curves use all 1001 rows; blanks mean that no bar is drawn there.
+    Curve_Time_Year/Fitted_5Year_Average_Density_PerYear: the exact smooth
+    fitted 5-year bin-average curve shown in the plot (1001 rows).
+    Bin_*: the 20 five-year histogram bins actually used for the plotted bars.
+    These occupy the first 20 rows, with remaining bin cells blank.
+    Fitted distribution statistics are metadata in the first data row.
+    Bin_Probability_WithinTarget remains the original 5-year-bin probability;
+    Bin_Probability_Density_PerYear is the ACTUAL bar height shown in the GUI.
+    Keeping both allows users to verify bin probability = density * bin width.
+    Fit_5Year_Bin_Probability and Fit_5Year_Average_Density_PerYear are
+    derived from a SEPARATE fit to 5-y bin-average observed densities,
+    following the provided independent-density reference.
     """
-    output = pd.DataFrame({"Curve_Year": np.linspace(0.0, 100.0, 1001)})
-    for key, prefix in [("To_FFF", "FFF"), ("To_CSF", "CSF")]:
-        g = hist_df.loc[hist_df["Target_Group"] == key].sort_values("Bin_Start")
-        selected = selected_fits.get(key)
-        curve_x, curve_y = get_transition_fitted_curve(g, selected)
-        output[f"{prefix}_Fitted_Curve"] = (
-            curve_y if curve_x is not None else np.full(len(output), np.nan))
-        for col_name, source_name in [
-            ("Bin_Start_Year", "Bin_Start"),
-            ("Bin_End_Year", "Bin_End"),
-            ("Bin_Center_Year", "Bin_Center"),
-            ("Bar_Count", "Count"),
-            ("Bar_Probability_WithinTarget", "Probability_within_group"),
-        ]:
-            vals = np.full(len(output), np.nan)
-            observed_vals = g[source_name].to_numpy(dtype=float)
-            vals[:len(observed_vals)] = observed_vals
-            output[f"{prefix}_{col_name}"] = vals
-        if selected is not None:
-            mean, std, cov = get_fitted_transition_moments(selected)
-            output.loc[0, f"{prefix}_BestFit_Distribution"] = selected["name"]
-            output.loc[0, f"{prefix}_BestFit_Parameters"] = '; '.join(
-                f"{param}={value:.7g}" for param, value in selected["params"].items())
-            output.loc[0, f"{prefix}_BestFit_Mean_Years"] = mean
-            output.loc[0, f"{prefix}_BestFit_COV"] = cov
+    if target not in ("To_FFF", "To_CSF"):
+        raise ValueError(f"Unexpected transition target: {target}")
+    g = hist_df.loc[hist_df["Target_Group"] == target].sort_values("Bin_Start")
+    selected = selected_fits.get(target)
+    curve_x, curve_y = get_transition_fitted_curve(g, selected)
+    # Retain the full horizontal coordinates even if no curve can be fitted,
+    # in which case the figure shows only the histogram and an annotation.
+    if curve_x is None:
+        curve_x = np.linspace(0.0, 100.0, 1001)
+        curve_y = np.full(curve_x.shape, np.nan, dtype=float)
+
+    output = pd.DataFrame({
+        "Curve_Time_Year": np.asarray(curve_x, dtype=float),
+        "Fitted_5Year_Average_Density_PerYear": np.asarray(curve_y, dtype=float),
+    })
+    for exported_name, input_name in [
+        ("Bin_Start_Year", "Bin_Start"),
+        ("Bin_End_Year", "Bin_End"),
+        ("Bin_Center_Year", "Bin_Center"),
+        ("Bin_Count", "Count"),
+        ("Bin_Probability_WithinTarget", "Probability_within_group"),
+        ("Bin_Probability_AllSamples", "Probability_in_all_samples"),
+        ("Observed_Target_Count", "N_group"),
+    ]:
+        arr = np.full(len(output), np.nan, dtype=float)
+        vals = g[input_name].to_numpy(dtype=float)
+        arr[:len(vals)] = vals
+        output[exported_name] = arr
+
+    output["Bin_Probability_Density_PerYear"] = (
+        output["Bin_Probability_WithinTarget"]
+        / (output["Bin_End_Year"] - output["Bin_Start_Year"])
+    )
+    fit_centers, fit_densities, fit_masses = get_fitted_five_year_bin_density(selected)
+    output["Fit_5Year_Bin_Probability"] = np.nan
+    output["Fit_5Year_Average_Density_PerYear"] = np.nan
+    if fit_centers is not None:
+        n_bins = len(fit_centers)
+        output.loc[:n_bins - 1, "Fit_5Year_Bin_Probability"] = fit_masses
+        output.loc[:n_bins - 1, "Fit_5Year_Average_Density_PerYear"] = fit_densities
+    output.loc[0, "Target_Mode"] = target.removeprefix("To_")
+    output.loc[0, "Histogram_Bin_Width_Year"] = float(TRANSITION_HIST_BIN_WIDTH)
+    output.loc[0, "Fit_Method"] = "Independent least squares of 5-year mean densities"
+    output.loc[0, "Curve_Method"] = "Reference PCHIP: fitted bin centers, endpoints (0,0) and (100,0)"
+    output.loc[0, "Legend_Statistics_Method"] = (
+        "Independent five-year bin-average density LS fitted distribution, "
+        "conditional 0-100-year integer-year moments"
+    )
+    if selected is None:
+        output.loc[0, "BestFit_Distribution"] = "Not fitted (insufficient observations)"
+    else:
+        dfit = selected.get("density_fit")
+        if dfit is None:
+            raise ValueError(f"{target}: missing density fit for Excel export")
+        mean, std, cov = get_fitted_transition_moments(dfit)
+        output.loc[0, "BestFit_Distribution"] = dfit["name"]
+        output.loc[0, "BestFit_Parameters"] = "; ".join(
+            f"{name}={value:.9g}" for name, value in dfit["params"].items()
+        )
+        # Use only the density-LS parameters, including the exact lambda/zeta
+        # parameterization shown in the GUI for a fitted lognormal model.
+        for key, value in dfit["params"].items():
+            output.loc[0, f"BestFit_Param_{key}"] = float(value)
+        if dfit["name"] == "Lognormal":
+            output.loc[0, "BestFit_Param_lambda"] = float(np.log(dfit["params"]["scale"]))
+            output.loc[0, "BestFit_Param_zeta"] = float(dfit["params"]["sigma_ln"])
+        output.loc[0, "BestFit_Mean_Year"] = mean
+        output.loc[0, "BestFit_Std_Year"] = std
+        output.loc[0, "BestFit_COV"] = cov
+        output.loc[0, "BestFit_Legend_Text"] = format_fitted_legend(selected)
+        output.loc[0, "BestFit_Fit_Method"] = dfit["fit_method"]
+        output.loc[0, "Independent_DensityFit_Parameters"] = output.loc[0, "BestFit_Parameters"]
+        output.loc[0, "Independent_DensityFit_RMSE_PerYear"] = float(dfit["density_rmse"])
+        output.loc[0, "Independent_DensityFit_NormalizedSSE"] = float(dfit["normalized_sse"])
     return output
 
 
-def build_six_figure_export_tables(result, sd_cov, selected_fits,
-                                   cumulative_df, crossing_df):
-    """Return only SIX compact, plot-specific Excel worksheets."""
+def get_cdf_target_figure_data(cumulative_df, crossing_df, target):
+    """Export ONE cumulative transition probability panel, FFF or CSF.
+
+    Cumulative probability is relative to all MC samples (not conditioned
+    on observed transitions). Threshold_Probability is constant for drawing
+    the dashed horizontal line. Reaching-year metadata and marker coordinates
+    are in the first row only; if unreached they remain blank.
+    """
+    if target not in ("FFF", "CSF"):
+        raise ValueError(f"Unexpected cumulative target: {target}")
+    tr = crossing_df.loc[crossing_df["Target_Mode"] == target].iloc[0]
+    threshold = float(tr["Threshold_Probability"])
+    output = pd.DataFrame({
+        "Year": cumulative_df["Year"].to_numpy(dtype=int),
+        "New_Transition_Count": cumulative_df[f"{target}_New_Transition_Count"].to_numpy(dtype=int),
+        "Cumulative_Transition_Count": cumulative_df[f"{target}_Cumulative_Count"].to_numpy(dtype=int),
+        "Cumulative_Probability_AllSamples": cumulative_df[
+            f"{target}_Cumulative_Probability_AllSamples"].to_numpy(dtype=float),
+        "Threshold_Probability": threshold,
+    })
+    output.loc[0, "Target_Mode"] = target
+    output.loc[0, "Reached_Within_100yr"] = bool(tr["Reached_Within_100yr"])
+    output.loc[0, "Cumulative_Probability_At_100yr"] = float(
+        tr["Cumulative_Probability_At_100yr"])
+    if bool(tr["Reached_Within_100yr"]):
+        yr = int(tr["First_Reaching_Year"])
+        output.loc[0, "First_Reaching_Year"] = yr
+        output.loc[0, "Probability_At_First_Reaching_Year"] = float(
+            tr["Probability_At_First_Reaching_Year"])
+        # The visible circle is drawn at (year, threshold), not at step top.
+        output.loc[0, "Plot_Marker_Year"] = yr
+        output.loc[0, "Plot_Marker_Probability"] = threshold
+    return output
+
+
+def build_eight_figure_export_tables(result, sd_cov, selected_fits,
+                                     cumulative_df, crossing_df):
+    """Eight Excel sheets in top-row then bottom-row chart order."""
     annual = pd.DataFrame({"Year": YEARS_FULL})
     annual_curves = {
         display_label(name): result["annual_probs"][:, idx]
         for idx, name in enumerate(result["label_names"])
     }
-    for display_name in ("CFF", "FFF", "CSF"):
-        if display_name in annual_curves:
-            annual[f"Probability_{display_name}"] = annual_curves[display_name]
+    for label in ("CFF", "FFF", "CSF"):
+        if label in annual_curves:
+            annual[f"Probability_{label}"] = annual_curves[label]
 
-    cdf = cumulative_df.copy()
-    summary = crossing_df.set_index("Target_Mode")
-    for target in ("FFF", "CSF"):
-        tr = summary.loc[target]
-        cdf[f"{target}_Threshold_Probability"] = float(tr["Threshold_Probability"])
-        # One metadata cell per target; no sample-level information.
-        cdf.loc[0, f"{target}_First_Reaching_Year"] = (
-            float(tr["First_Reaching_Year"])
-            if bool(tr["Reached_Within_100yr"]) else "Not reached")
-
+    # Ordered insertion is intentional and matches render_dashboard_results:
+    # row 1: corrosion | SFM probs | transition to FFF | transition to CSF
+    # row 2: scour     | transition types | CDF to FFF | CDF to CSF
     return {
-        "01_Scour_Depth": get_scour_figure_data(
-            YEARS_FULL, result["samples_dict"], sd_cov),
-        "02_Corrosion_Level": get_corrosion_figure_data(
+        "01_Corrosion_Level": get_corrosion_figure_data(
             YEARS_FULL, result["corr_long"], result["corr_stir"]),
-        "03_SFM_Probabilities": annual,
-        "04_Transition_Types": get_transition_type_figure_data(result["transition_df"]),
-        "05_Transition_Times": get_transition_time_figure_data(
-            result["hist_df"], selected_fits),
-        "06_Cumulative_CDF": cdf,
+        "02_SFM_Probabilities": annual,
+        "03_TimeDist_to_FFF": get_transition_time_target_figure_data(
+            result["hist_df"], selected_fits, "To_FFF"),
+        "04_TimeDist_to_CSF": get_transition_time_target_figure_data(
+            result["hist_df"], selected_fits, "To_CSF"),
+        "05_Scour_Depth": get_scour_figure_data(
+            YEARS_FULL, result["samples_dict"], sd_cov),
+        "06_Transition_Types": get_transition_type_figure_data(result["transition_df"]),
+        "07_Cumulative_to_FFF": get_cdf_target_figure_data(
+            cumulative_df, crossing_df, "FFF"),
+        "08_Cumulative_to_CSF": get_cdf_target_figure_data(
+            cumulative_df, crossing_df, "CSF"),
     }
+
+
+# ============================================================
+# 9d. Supplementary formulas, schematic, and input definitions
+# ============================================================
+def render_calculation_formulas():
+    """ONE aligned KaTeX expression: four captions centered over four formulas.
+
+    Adjustable horizontal equation spacing, header padding, and caption-to-math
+    distance are available in GUI presentation controls at the top of the file.
+    """
+    st.markdown(
+        "<div class='reference-section-title'>Related Calculation Formulas</div>",
+        unsafe_allow_html=True,
+    )
+    formulas = [
+        (
+            "Corrosion initiation time",
+            r"t_{corr}=X_I\left[\frac{d_c^2}{4k_ek_tk_cD_0(t_0)^n}"
+            r"\left[\mathrm{erf}^{-1}\left(1-\frac{C_{cr}}{C_s}\right)\right]^{-2}"
+            r"\right]^{\tfrac{1}{1-n}}",
+        ),
+        (
+            "Surface chloride concentration",
+            r"C_s=A_{cs}(w/c)+\varepsilon_{cs}",
+        ),
+        (
+            "Corrosion rate",
+            r"i_{corr,0}=\frac{37.8\,\lambda_{corr}(1-w)^{-1.64}}{d_c}",
+        ),
+        (
+            "Mean scour depth",
+            r"SD_{mean}(t)=\lambda_{sd}B"
+            r"\left\{p\left[1-\exp(-qt)\right]+r\left[1-\exp(-st)\right]\right\}",
+        ),
+    ]
+    # Use ONLY standard KaTeX array column codes "cccc".  The former
+    # c@{\hspace{...}}c syntax is not supported consistently by Streamlit's
+    # KaTeX renderer and resulted in the full LaTeX being printed in red.
+    # Put equivalent adjustable spacing *inside* both heading and formula
+    # cells, maintaining exactly the same four column centers for both rows.
+    cell_gap = rf"\hspace{{{FORMULA_SPACING_EM}em}}"
+    heading_padding = rf"\hspace{{{FORMULA_TITLE_PADDING_EM}em}}"
+    caption_cells = []
+    equation_cells = []
+    for i, (caption, equation) in enumerate(formulas):
+        suffix = cell_gap if i < len(formulas) - 1 else ""
+        caption_cells.append(
+            rf"{heading_padding}\textbf{{{caption}}}{heading_padding}{suffix}"
+        )
+        equation_cells.append(rf"\displaystyle {equation}{suffix}")
+
+    combined_latex = (
+        r"\begin{array}{cccc}"
+        + " & ".join(caption_cells)
+        + rf"\\[{FORMULA_HEADING_ROW_GAP_EM}em]"
+        + " & ".join(equation_cells)
+        + r"\end{array}"
+    )
+    with st.container(key="equation_toolbar"):
+        st.latex(combined_latex)
+
+
+def render_glossary_group(title, configs):
+    """Individual rows with a separator, using the INPUT TABLE math symbols."""
+    from html import escape
+
+    st.markdown(
+        f"<div class='glossary-group-title'>{escape(title)}</div>",
+        unsafe_allow_html=True,
+    )
+    for cfg in configs:
+        param_id, description = cfg[0], cfg[2]
+        # No artificial line breaks or manually aligned Markdown tables:
+        # the entire symbol + meaning is inside one row container.
+        with st.container(key=f"glossary_row_{param_id}"):
+            symbol_column, description_column = st.columns([1.25, 4.35], gap="small")
+            with symbol_column:
+                st.markdown("$" + format_parameter_math(param_id) + "$")
+            with description_column:
+                st.markdown(
+                    f"<div class='glossary-meaning'>{description if param_id == 'SD_val' else escape(description)}</div>",
+                    unsafe_allow_html=True,
+                )
+
+
+def render_schematic_and_descriptions(structure_cfg, scour_cfg, corrosion_cfg):
+    """Left: two diagrams. Right: responsive 35-parameter glossary."""
+    # Parent st.container gives stable scope for height matching CSS.
+    with st.container(key="reference_materials"):
+        _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg)
+
+
+def _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg):
+    schematic_col, descriptions_col = st.columns([1.05, 2.95], gap="medium")
+    with schematic_col:
+        with st.container(border=True, key="schematic_reference"):
+            st.markdown(
+                "<div class='reference-card-title'>Structural Schematic</div>",
+                unsafe_allow_html=True,
+            )
+            structure_path = Path(__file__).parent / "GUI_structure.png"
+            if structure_path.exists():
+                st.image(str(structure_path), width="stretch")
+            else:
+                st.caption(
+                    "Place GUI_structure.png beside this Python file "
+                    "to display the structural schematic."
+                )
+        with st.container(border=True, key="sfm_reference"):
+            st.markdown(
+                "<div class='reference-card-title'>Seismic failure modes</div>",
+                unsafe_allow_html=True,
+            )
+            sfm_image_path = Path(__file__).parent / "GUI_SFM.png"
+            if sfm_image_path.exists():
+                st.image(str(sfm_image_path), width="stretch")
+            else:
+                st.caption(
+                    "Place GUI_SFM.png beside this Python file "
+                    "to display the seismic failure modes."
+                )
+    with descriptions_col:
+        with st.container(border=True, key="parameter_glossary"):
+            st.markdown(
+                "<div class='reference-card-title'>Parameter Descriptions</div>",
+                unsafe_allow_html=True,
+            )
+            # One native KaTeX symbol for each of the 35 input definitions.
+            # Balance the 17 structural rows against 7 + 11 right-side rows.
+            structural_defs, physical_defs = st.columns([1.0, 1.0], gap="medium")
+            with structural_defs:
+                render_glossary_group("Structural and soil parameters", structure_cfg)
+            with physical_defs:
+                render_glossary_group("Scour model parameters", scour_cfg)
+                render_glossary_group("Corrosion model parameters", corrosion_cfg)
 
 
 # ============================================================
@@ -2761,42 +3369,7 @@ def render_lifecycle_app(assets=None):
             unsafe_allow_html=True,
         )
 
-    # Four scientific formulas displayed as ONE KaTeX expression on one line.
-    # Adjust FORMULA_SPACING_EM and FORMULA_BAR_HEIGHT_PX above as desired.
-    equation_col, action_col = st.columns([5.15, 1.25], gap="small")
-    with equation_col:
-        with st.container(key="equation_toolbar"):
-            formula_gap = rf"\hspace{{{FORMULA_SPACING_EM}em}}"
-            corrosion_initiation = (
-                r"t_{corr}=X_1\left[\frac{d_c^2}{4k_ek_tk_cD_0(t_0)^n}"
-                r"\left[\mathrm{erf}^{-1}\left(1-\frac{C_{cr}}{C_0}\right)\right]^{-2}"
-                r"\right]^{\tfrac{1}{1-n}}"
-            )
-            chloride_surface = r"C_s=A_{s}(w/c)+\varepsilon_{s}"
-            corrosion_current = (
-                r"i_{corr,0}="
-                r"\frac{37.8\,\lambda_{corr}(1-w)^{-1.64}}{d_c}"
-            )
-            scour_depth = (
-                r"SD_{mean}(t)=\lambda_{sd}B"
-                r"\left\{p\left[1-\exp(-qt)\right]+r\left[1-\exp(-st)\right]\right\}"
-            )
-            st.latex(formula_gap.join((
-                corrosion_initiation, chloride_surface,
-                corrosion_current, scour_depth,
-            )))
-    with action_col:
-        st.markdown(
-            "<div style='font-size:16px;color:#555;font-weight:700;"
-            "margin-bottom:6px;text-align:right;"
-            "line-height:1.35'>Created by Jingcheng Wang, Fuzhou University. "
-            "<br>Contact: jingchengwang@fzu.edu.cn</div>",
-            unsafe_allow_html=True,
-        )
-        predict_clicked = st.button("Simulate (MCS)",
-                                    type="primary", width="stretch")
-
-    # Upper input area: left = structure + other; right = corrosion + scour.
+    # Upper input area: left = structure + other; right = scour + corrosion.
     left_panel, right_panel = st.columns([1, 1], gap="small")
     with left_panel:
         with st.container(border=True, key="structure_card"):
@@ -2832,7 +3405,7 @@ def render_lifecycle_app(assets=None):
                  0.005, 0.015, 0.010, "Normal", 0.27, 0.001, "%.3f", struct_opts),
                 ("rho_ps", "ρ<sub>p,s</sub>", "Pile transverse reinforcement ratio", "0.003~0.013",
                  0.003, 0.013, 0.008, "Normal", 0.42, 0.001, "%.3f", struct_opts),
-                ("S_Dp", "S (D<sub>p</sub>)", "Pile spacing-to-diameter ratio", "2.5~3.5",
+                ("S_Dp", "S<sub>p/D<sub>p</sub>", "Pile spacing-to-diameter ratio", "2.5~3.5",
                  2.5, 3.5, 3.0, "Normal", 0.15, 0.1, "%.2f", struct_opts),
                 ("fyl", "f<sub>yl</sub> (MPa)", "Longitudinal reinforcement yield strength", "300~500",
                  300.0, 500.0, 400.0, "Lognormal", 0.106, 10.0, "%.0f", struct_opts),
@@ -2844,7 +3417,7 @@ def render_lifecycle_app(assets=None):
                  0.35, 0.75, 0.55, "Uniform", 0.0, 0.05, "%.2f", struct_opts),
             ]
             user_struct = render_param_section(
-                "1. Structure/Soil-related parameters", part1_config,
+                "1. Structural and soil parameters", part1_config,
                 use_std=False,
             )
         with st.container(border=True, key="other_card"):
@@ -2872,33 +3445,42 @@ def render_lifecycle_app(assets=None):
                 )
 
     with right_panel:
+        with st.container(border=True, key="scour_card"):
+            scour_opts = [
+                "Normal",
+                "Deterministic",
+            ]
+            part3_config = [
+                ("SD_val", "SD (m)",
+                 "Scour depth",
+                 "0~8", 0.0, 8.0, None, "Normal", 0.27, 0.5, "%.3f", ["Normal"]),
+                ("lambda_sd", "λ<sub>sd</sub>",
+                 "Scour depth adjustment coefficient", "-",
+                 None, None, 2.000, "Deterministic", 0.0, 0.1, "%.2f", scour_opts),
+                ("B_val", "B (m)", "Base width of the pile foundation", "-",
+                 None, None, 2.260, "Deterministic", 0.0, 0.01, "%.3f", scour_opts),
+                ("p_val", "p", "Empirical scour parameter p", "-",
+                 None, None, 1.093, "Deterministic", 0.0, 0.01, "%.3f", scour_opts),
+                ("q_val", "q", "Empirical scour parameter q", "-",
+                 None, None, 0.021, "Deterministic", 0.0, 0.01, "%.3f", scour_opts),
+                ("r_val", "r", "Empirical scour parameter r", "-",
+                 None, None, 0.269, "Deterministic", 0.0, 0.01, "%.3f", scour_opts),
+                ("s_val", "s", "Empirical scour parameter s", "-",
+                 None, None, 2.135, "Deterministic", 0.0, 0.01, "%.3f", scour_opts),
+            ]
+            user_scour = render_param_section(
+                "2. Scour model parameters", part3_config,
+                use_std=False,
+            )
+
         with st.container(border=True, key="corrosion_card"):
-            st.markdown("<div class='section-header'>2. Corrosion-related parameters</div>",
+            st.markdown("<div class='section-header'>3. Corrosion model parameters</div>",
                         unsafe_allow_html=True)
-            zone_label, zone_field = st.columns([1.25, 1.30], gap="small")
-            with zone_label:
-                st.markdown(
-                    "<div class='environment-zone-label'>"
-                    "Environmental Zone:</div>",
-                    unsafe_allow_html=True,
-                )
-            with zone_field:
-                zone = st.selectbox(
-                    "Zone", ["Submerged", "Tidal and Splash", "Atmospheric"],
-                    index=1, label_visibility="collapsed",
-                )
-            if zone == "Submerged":
-                acs_def = (10.348, 0.714)
-                ecs_def = (0.000, 0.580)
-                ccr_def = (1.600, 0.200)
-            elif zone == "Tidal and Splash":
-                acs_def = (7.758, 1.360)
-                ecs_def = (0.000, 1.105)
-                ccr_def = (0.900, 0.150)
-            else:
-                acs_def = (6.440, 0.894)
-                ecs_def = (0.000, 0.753)
-                ccr_def = (0.900, 0.150)
+            # Environmental Zone selector removed by request.
+            # Preserve original default (Tidal and Splash) parameters.
+            acs_def = (7.758, 1.360)
+            ecs_def = (0.000, 1.105)
+            ccr_def = (0.900, 0.150)
             corr_opts = [
                 "Normal",
                 "Lognormal",
@@ -2924,7 +3506,7 @@ def render_lifecycle_app(assets=None):
                  1e-6, None, 1.000, "Normal", 0.300, 0.1, "%.3f", corr_opts),
                 ("n_val", "n", "Age factor for chloride diffusion", "0~1",
                  None, None, 0.250, "Beta", 0.050, 0.01, "%.3f", corr_opts),
-                ("X1", "X<sub>1</sub>", "Model uncertainty factor", ">0",
+                ("X1", "X<sub>I</sub>", "Model uncertainty factor", ">0",
                  None, None, 1.000, "Lognormal", 0.050, 0.01, "%.3f", corr_opts),
 
                 ("R", "R", "Pitting corrosion factor", ">0",
@@ -2935,33 +3517,20 @@ def render_lifecycle_app(assets=None):
             ]
             user_corr = render_param_section("", part2_config, use_std=True)
 
-        with st.container(border=True, key="scour_card"):
-            scour_opts = [
-                "Normal",
-                "Deterministic",
-            ]
-            part3_config = [
-                ("SD_val", "SD (m)",
-                 "SD<sub>mean</sub>(t) = λ<sub>sd</sub>B{p[1-exp(-qt)] + r[1-exp(-st)]}",
-                 "0~8", 0.0, 8.0, None, "Normal", 0.27, 0.5, "%.3f", ["Normal"]),
-                ("lambda_sd", "λ<sub>sd</sub>",
-                 "Scour depth adjustment coefficient", "-",
-                 None, None, 2.000, "Deterministic", 0.0, 0.1, "%.2f", scour_opts),
-                ("B_val", "B (m)", "Base width of the pile foundation", "-",
-                 None, None, 2.260, "Deterministic", 0.0, 0.01, "%.3f", scour_opts),
-                ("p_val", "p", "Empirical scour parameter p", "-",
-                 None, None, 1.093, "Deterministic", 0.0, 0.01, "%.3f", scour_opts),
-                ("q_val", "q", "Empirical scour parameter q", "-",
-                 None, None, 0.021, "Deterministic", 0.0, 0.01, "%.3f", scour_opts),
-                ("r_val", "r", "Empirical scour parameter r", "-",
-                 None, None, 0.269, "Deterministic", 0.0, 0.01, "%.3f", scour_opts),
-                ("s_val", "s", "Empirical scour parameter s", "-",
-                 None, None, 2.135, "Deterministic", 0.0, 0.01, "%.3f", scour_opts),
-            ]
-            user_scour = render_param_section(
-                "3. Scour-related parameters", part3_config,
-                use_std=False,
-            )
+    # Main actions: equally positioned between the parameter editor and 2x4 plots.
+    action_left, action_right = st.columns([1.0, 1.0], gap="small")
+    with action_left:
+        _, simulate_center, _ = st.columns([0.9, 1.7, 0.9], gap="small")
+        with simulate_center:
+            with st.container(key="simulate_action"):
+                predict_clicked = st.button(
+                    "Simulate", type="primary", width="stretch")
+    with action_right:
+        _, download_center, _ = st.columns([0.9, 1.7, 0.9], gap="small")
+        with download_center:
+            with st.container(key="download_action"):
+                # Populated after MC finishes, without requiring a rerun.
+                download_placeholder = st.empty()
 
     # All eight graphs are BELOW both input columns, never nested in either one.
     if predict_clicked:
@@ -3061,8 +3630,8 @@ def render_lifecycle_app(assets=None):
                     f"{threshold_year_text('CSF')}</div>"
                 )
 
-                # Unchanged six-sheet export; preserve original figure-level data.
-                figure_tables = build_six_figure_export_tables(
+                # Eight worksheets: one-to-one with the eight displayed plots.
+                figure_tables = build_eight_figure_export_tables(
                     result, sd_cov, selected_fits, cumulative_df, crossing_df)
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -3075,8 +3644,33 @@ def render_lifecycle_app(assets=None):
                     "transition_summary_html": transition_summary_html,
                     "cdf_years_html": cdf_years_html,
                 }
+    # Fill the top-right download position without a second rerun.
+    with download_placeholder.container():
+        excel_bytes = st.session_state.get("lifecycle_excel_data")
+        st.download_button(
+            "Download Results (Excel)",
+            data=excel_bytes if excel_bytes is not None else b"",
+            file_name="Lifecycle_Assessment_Results.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            disabled=excel_bytes is None,
+            width="stretch",
+        )
+
     if "lifecycle_dashboard_display" in st.session_state:
         render_dashboard_results(st.session_state.lifecycle_dashboard_display)
+
+    # Supplementary reference content follows the eight result charts.
+    render_calculation_formulas()
+    render_schematic_and_descriptions(part1_config, part3_config, part2_config)
+    st.markdown(
+        "<div class='dashboard-author-footer'>"
+        "Created by Jingcheng Wang, Fuzhou University."
+        "<span class='author-contact-gap'></span>"
+        "Contact: jingchengwang@fzu.edu.cn"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 # ============================================================
