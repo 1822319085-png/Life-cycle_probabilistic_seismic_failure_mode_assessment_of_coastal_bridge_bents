@@ -3279,7 +3279,7 @@ def render_calculation_formulas():
         (
             "Corrosion initiation time",
             r"t_{corr}=X_I\left[\frac{d_c^2}{4k_ek_tk_cD_0(t_0)^n}"
-            r"\left[\mathrm{erf}^{-1}\left(1-\frac{C_{cr}}{C_s}\right)\right]^{-2}"
+            r"\left[{erf}^{-1}\left(1-\frac{C_{cr}}{C_s}\right)\right]^{-2}"
             r"\right]^{\tfrac{1}{1-n}}",
         ),
         (
