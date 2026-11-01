@@ -275,8 +275,10 @@ PARAMETER_NAME_SHIFT_PX = -8      # Positive = move parameter symbols downward (
 
 # Figure/header appearance -- editing these will NOT affect any MC results.
 MAIN_TITLE_FONT_MAX_PX = 44       # Main heading upper size (px)
-DASHBOARD_CAPTION_HEIGHT_PX = 50  # Each plot caption's line height (px)
+DASHBOARD_CAPTION_HEIGHT_PX = 50  # Original caption height for the first plot row
+DASHBOARD_BOTTOM_CAPTION_HEIGHT_PX = 50  # Enough space for the long two-line count-plot title
 DASHBOARD_CAPTION_IMAGE_GAP_REM = 0.08  # Caption to chart image (rem)
+DASHBOARD_ROW_GAP_REM = 0.25  # Vertical gap between the two dashboard rows (rem)
 TRANSITION_TYPES_BOTTOM_FRAC = 0.265   # Smaller = less blank below type labels
 
 
@@ -633,6 +635,21 @@ def inject_css():
             margin: 0 !important;
             padding: 0 0 0 14%;
         }
+        /* Give all second-row captions the same height. In particular, the
+           transition-count heading uses two centered lines rather than being
+           clipped by the axes below. The first-row captions are unchanged. */
+        .dashboard-chart-title--bottom {
+            height: __DASHBOARD_BOTTOM_CAPTION_HEIGHT_PX__px !important;
+            min-height: __DASHBOARD_BOTTOM_CAPTION_HEIGHT_PX__px !important;
+            overflow: visible !important;
+        }
+
+        /* Control the vertical gap between the two dashboard chart rows. */
+        .st-key-dashboard_plots[data-testid="stVerticalBlock"] {
+            gap: __DASHBOARD_ROW_GAP_REM__rem !important;
+            row-gap: __DASHBOARD_ROW_GAP_REM__rem !important;
+        }
+
         /* Streamlit inserts extra vertical space between the caption Markdown
            and st.image in a column; remove only that local gap. */
         .st-key-dashboard_plots [data-testid="stColumn"] > [data-testid="stVerticalBlock"],
@@ -853,7 +870,9 @@ def inject_css():
         .replace("__PARAM_NAME_SHIFT_PX__", str(PARAMETER_NAME_SHIFT_PX))
         .replace("__MAIN_TITLE_MAX_PX__", str(MAIN_TITLE_FONT_MAX_PX))
         .replace("__DASHBOARD_CAPTION_HEIGHT_PX__", str(DASHBOARD_CAPTION_HEIGHT_PX))
-        .replace("__DASHBOARD_CAPTION_IMAGE_GAP_REM__", str(DASHBOARD_CAPTION_IMAGE_GAP_REM)),
+        .replace("__DASHBOARD_BOTTOM_CAPTION_HEIGHT_PX__", str(DASHBOARD_BOTTOM_CAPTION_HEIGHT_PX))
+        .replace("__DASHBOARD_CAPTION_IMAGE_GAP_REM__", str(DASHBOARD_CAPTION_IMAGE_GAP_REM))
+        .replace("__DASHBOARD_ROW_GAP_REM__", str(DASHBOARD_ROW_GAP_REM)),
         unsafe_allow_html=True,
     )
 
@@ -1662,9 +1681,17 @@ def get_transition_table(
 def get_grouped_transition_histogram(
     transition_df,
     bin_width=5,
+    n_total=None,
 ):
-    df_tr = transition_df[
-        transition_df["Transition_Flag"]
+    # A sample can have one FFF entry AND one CSF entry. Preserve the
+    # full-MC denominator for the exported unconditional bin probabilities.
+    if n_total is None and "Transition_Sequence" in transition_df.columns:
+        raise ValueError("n_total is required for first-target event histograms")
+    n_all = int(n_total) if n_total is not None else len(transition_df)
+    if n_all < 1:
+        raise ValueError("Full MC sample count must be positive")
+    df_tr = transition_df.loc[
+        transition_df["Transition_Flag"].astype(bool)
     ].copy()
 
     groups = {
@@ -1720,11 +1747,287 @@ def get_grouped_transition_histogram(
                     if n_group > 0
                     else 0.0,
                 "Probability_in_all_samples":
-                    count / len(transition_df),
+                    count / n_all,
                 "N_group": int(n_group),
             })
 
     return pd.DataFrame(rows)
+
+
+# ============================================================
+# 7b. All reliable mode transitions, following the Case2 publication reference
+# ============================================================
+def summarize_all_reliable_transitions(result):
+    """Reference Case2: first confirmed event + all subsequent reliable events.
+
+    Each subsequent event must remain in its new mode for MIN_PERSIST_YEARS,
+    pass the probability margin relative to the PREVIOUS confirmed mode, and
+    start after the previous confirmation window. First-event timing and
+    classification come unchanged from get_transition_table().
+
+    Count plot: per-sample numbers 0/1/2/3/>3, normalized by ALL MC samples.
+    Directed-type plot: number of UNIQUE samples ever seeing each direction,
+    also normalized by ALL samples; direction probabilities need not sum to 1.
+    """
+    paths = np.asarray(result["mode_paths"], dtype=np.int32)
+    prob = np.asarray(result["prob_paths"], dtype=float)
+    first = result["transition_df"]
+    labels = np.asarray(result["label_names"]).astype(str)
+    canonical = np.array([display_label(x) for x in labels], dtype=str)
+    n, ny = paths.shape
+    years = np.asarray(YEARS_FULL, dtype=int)
+    if ny != len(years) or prob.shape != (n, ny, len(labels)) or len(first) != n:
+        raise ValueError("Repeated-transition input dimensions do not match")
+    if len(set(canonical.tolist())) != len(canonical):
+        raise ValueError("Duplicate canonical mode labels")
+    by_label = {name: idx for idx, name in enumerate(canonical)}
+    first_flag = first["Transition_Flag"].to_numpy(dtype=bool)
+    first_years = first["Transition_Year"].to_numpy(dtype=int)
+    initial_mode = paths[:, 0].copy()
+    current_mode = initial_mode.copy()
+    count = np.zeros(n, dtype=np.int32)
+    persistence = max(1, int(MIN_PERSIST_YEARS))
+    next_eligible = np.full(n, ny, dtype=np.int32)
+
+    first_idx = np.flatnonzero(first_flag)
+    if first_idx.size:
+        target_names = first.iloc[first_idx]["Transition_Mode"].astype(str).to_numpy()
+        target_idx = np.array([by_label[display_label(x)] for x in target_names], dtype=int)
+        first_positions = np.searchsorted(years, first_years[first_idx])
+        if np.any(first_positions >= ny) or np.any(paths[first_idx, first_positions] != target_idx):
+            raise ValueError("The first transition table disagrees with the mode paths")
+        current_mode[first_idx] = target_idx
+        count[first_idx] = 1
+        next_eligible[first_idx] = first_positions + persistence
+
+    frames = []
+    if first_idx.size:
+        frames.append(pd.DataFrame({
+            "Sample_ID": first_idx + 1,
+            "Transition_Sequence": np.ones(first_idx.size, dtype=int),
+            "Transition_Year": first_years[first_idx],
+            "Mode_Before": canonical[initial_mode[first_idx]],
+            "Mode_After": canonical[current_mode[first_idx]],
+        }))
+    # Vectorization over samples minimizes overhead for 100,000 MC paths.
+    for j in range(1, ny - persistence + 1):
+        if years[j] < MIN_TRANSITION_YEAR:
+            continue
+        idx = np.flatnonzero(first_flag & (next_eligible <= j) &
+                             (paths[:, j] != current_mode))
+        if not idx.size:
+            continue
+        proposed = paths[idx, j]
+        previous = current_mode[idx]
+        valid = np.ones(idx.size, dtype=bool)
+        for offset in range(persistence):
+            valid &= paths[idx, j + offset] == proposed
+            if USE_TRANSITION_PROB_MARGIN:
+                valid &= (prob[idx, j + offset, proposed] -
+                          prob[idx, j + offset, previous] >= TRANSITION_PROB_MARGIN)
+            if not np.any(valid):
+                break
+        idx = idx[valid]
+        if not idx.size:
+            continue
+        proposed = proposed[valid]
+        previous = previous[valid]
+        count[idx] += 1
+        frames.append(pd.DataFrame({
+            "Sample_ID": idx + 1,
+            "Transition_Sequence": count[idx].copy(),
+            "Transition_Year": np.full(idx.size, int(years[j]), dtype=int),
+            "Mode_Before": canonical[previous],
+            "Mode_After": canonical[proposed],
+        }))
+        current_mode[idx] = proposed
+        next_eligible[idx] = j + persistence
+
+    events = (pd.concat(frames, ignore_index=True) if frames else
+              pd.DataFrame(columns=["Sample_ID", "Transition_Sequence",
+                                    "Transition_Year", "Mode_Before", "Mode_After"]))
+    if not np.array_equal(count > 0, first_flag):
+        raise RuntimeError("Repeated-event counts and first-transition flags disagree")
+    if int(count.sum()) != len(events):
+        raise RuntimeError("Every confirmed event must be present exactly once")
+    if not events.empty:
+        events["Transition_Type"] = (events["Mode_Before"].astype(str) +
+                                      " to " + events["Mode_After"].astype(str))
+
+    groups = ["0", "1", "2", "3", ">3"]
+    total_counts = [int(np.count_nonzero(count == i)) for i in range(4)]
+    total_counts.append(int(np.count_nonzero(count > 3)))
+    count_summary = pd.DataFrame({
+        "Number_of_Transitions": groups,
+        "Sample_Count": total_counts,
+        "Probability_AllSamples": np.asarray(total_counts, dtype=float) / n,
+    })
+    if not np.isclose(count_summary["Probability_AllSamples"].sum(), 1.0):
+        raise RuntimeError("Transition-count probabilities must sum to 1")
+
+    directions = [("CFF", "FFF"), ("CSF", "FFF"), ("CFF", "CSF"),
+                  ("FFF", "CSF"), ("FFF", "CFF"), ("CSF", "CFF")]
+    rows = []
+    for before, after in directions:
+        if events.empty:
+            subset = events
+        else:
+            subset = events.loc[(events["Mode_Before"] == before) &
+                                (events["Mode_After"] == after)]
+        unique = int(subset["Sample_ID"].nunique())
+        rows.append({"Transition_Type": f"{before} to {after}",
+                     "Event_Count": len(subset),
+                     "Unique_Sample_Count": unique,
+                     "Probability_AllSamples": unique / n})
+    nontransition_count = int(np.count_nonzero(count == 0))
+    rows.append({"Transition_Type": "No transition", "Event_Count": 0,
+                 "Unique_Sample_Count": nontransition_count,
+                 "Probability_AllSamples": nontransition_count / n})
+    type_summary = (pd.DataFrame(rows).sort_values(
+        "Probability_AllSamples", ascending=False, kind="stable").reset_index(drop=True))
+    return count_summary, type_summary, events
+
+
+
+def extract_first_target_transition_events(repeated_events, n_samples):
+    """One first reliable ENTRY into FFF and CSF, independently per sample.
+
+    For example, CFF -> FFF at year 12 -> CSF at year 55 contributes
+    year 12 to the FFF target and year 55 to the CSF target. Further
+    returns to either target do not contribute again. Initial occupancy
+    at year 0 is not a transition, consistent with the reference script.
+
+    The returned columns retain the legacy transition-table names so that
+    histogram fitting, plotted sample moments and Excel tables all share
+    exactly this same selected set of events.
+    """
+    if int(n_samples) < 1:
+        raise ValueError("n_samples must be positive")
+    needed = {"Sample_ID", "Transition_Sequence", "Transition_Year",
+              "Mode_Before", "Mode_After"}
+    if not needed.issubset(repeated_events.columns):
+        raise ValueError("Reliable event table lacks first-target columns")
+    targets = repeated_events.loc[
+        repeated_events["Mode_After"].isin(("FFF", "CSF"))
+    ].copy()
+    if targets.empty:
+        return pd.DataFrame(columns=[
+            "Sample_ID", "Transition_Sequence", "Transition_Year",
+            "Mode_Before", "Mode_After", "Transition_Mode",
+            "Transition_Type", "Transition_Flag"])
+    if (not targets["Sample_ID"].between(1, int(n_samples)).all()
+            or not targets["Transition_Year"].between(1, 100).all()):
+        raise ValueError("Invalid first-target sample IDs or years")
+    targets = targets.sort_values(
+        ["Sample_ID", "Transition_Year", "Transition_Sequence"],
+        kind="stable")
+    targets = targets.drop_duplicates(
+        subset=["Sample_ID", "Mode_After"], keep="first").reset_index(drop=True)
+    raw_label = {"CFF": "PFF", "FFF": "FFF", "CSF": "PSF"}
+    targets["Transition_Mode"] = targets["Mode_After"].map(raw_label)
+    targets["Transition_Type"] = (
+        targets["Mode_Before"].map(raw_label) + "->" +
+        targets["Mode_After"].map(raw_label))
+    targets["Transition_Flag"] = True
+    if (targets.duplicated(["Sample_ID", "Mode_After"]).any()
+            or targets.groupby("Mode_After")["Sample_ID"].nunique().max() > n_samples):
+        raise RuntimeError("A sample must enter each target at most once")
+    return targets
+
+
+def make_transition_count_plot(count_summary):
+    """Case2 reference colors and all-sample normalization; categories 0/1/2/3/>3."""
+    wanted = ["0", "1", "2", "3", ">3"]
+    g = count_summary.set_index("Number_of_Transitions").loc[wanted]
+    probs = g["Probability_AllSamples"].to_numpy(dtype=float)
+    fig, ax = plt.subplots(figsize=(6, 3.3), dpi=220)
+    x = np.arange(len(wanted))
+    ax.bar(x, probs, color=["#33A1BC", "#EE95A3", "#9A9A9A", "#9A9A9A", "#9A9A9A"],
+           width=.65, edgecolor="black", linewidth=.5, alpha=.88)
+    ax.set_xticks(x)
+    ax.set_xticklabels(wanted)
+    ax.set_xlim(-.6, 4.4)
+    set_axis_labels(ax, "Number of transitions", "Probability")
+    # Reference: upward rounding only, without adding another 0.1.
+    y_step = 0.1
+    y_upper = min(1.0, max(y_step,
+        float(np.ceil((float(probs.max()) - 1e-12) / y_step) * y_step)))
+    ax.set_ylim(0.0, y_upper)
+    ax.set_yticks(np.round(np.arange(0.0, y_upper + y_step * 0.5, y_step), 10))
+    ax.grid(False)
+    apply_academic_style(ax)
+    return fig
+
+
+def make_transition_type_plot(type_summary):
+    """All reliable events: each direction is an ever-experienced sample event."""
+    # Suppress only the No transition BAR; retain its original statistics
+    # in type_summary and the Excel export.
+    g = type_summary.loc[type_summary["Transition_Type"].ne("No transition")].copy()
+    labels = g["Transition_Type"].tolist()
+    probs = g["Probability_AllSamples"].to_numpy(dtype=float)
+    # Case2 reference palette assigned by displayed bar position (not mode).
+    # 1st: blue; 2nd–3rd: pink; 4th and later: gray.
+    colors = ["#33A1BC", "#EE95A3", "#EE95A3"] + ["#9A9A9A"] * max(0, len(labels) - 3)
+    colors = colors[:len(labels)]
+    fig, ax = plt.subplots(figsize=(6, TRANSITION_TYPE_FIG_HEIGHT), dpi=220)
+    x = np.arange(len(labels))
+    ax.bar(x, probs, color=colors, edgecolor="black", linewidth=.5, alpha=.88)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=35, ha="right", rotation_mode="anchor")
+    ax.set_xlim(-.6, len(labels)-.4)
+    set_axis_labels(ax, "Transition type", "Probability")
+    set_dynamic_y_axis(ax, float(probs.max()), probability=True)
+    ax.grid(False)
+    apply_academic_style(ax)
+    fig.subplots_adjust(left=.16, right=.99, top=.97, bottom=.38)
+    return fig
+
+
+def make_combined_cumulative_plot(cdf_df, threshold_df):
+    """One plot: first-transition CDF to FFF / CSF, both per all samples."""
+    fig, ax = plt.subplots(figsize=(6, 3.3), dpi=220)
+    years = cdf_df["Year"].to_numpy(dtype=int)
+    colors = {"FFF": "#33A1BC", "CSF": "#EE95A3"}
+    all_max = 0.0
+    for target in ("FFF", "CSF"):
+        color = colors[target]
+        p = cdf_df[f"{target}_Cumulative_Probability_AllSamples"].to_numpy(dtype=float)
+        tr = threshold_df.loc[threshold_df["Target_Mode"].eq(target)].iloc[0]
+        threshold = float(tr["Threshold_Probability"])
+        all_max = max(all_max, float(p.max()), threshold)
+        ax.step(years, p, where="post", linewidth=CUMULATIVE_CDF_CURVE_LINEWIDTH,
+                color=color, label=target, zorder=3)
+        ax.axhline(threshold, color="#8A8A8A", linestyle="--",
+                   linewidth=CUMULATIVE_CDF_GUIDE_LINEWIDTH, zorder=1)
+        if bool(tr["Reached_Within_100yr"]):
+            yr = int(tr["First_Reaching_Year"])
+            ax.plot(yr, threshold, "o", markersize=CUMULATIVE_CDF_MARKER_SIZE,
+                    markerfacecolor="white", markeredgecolor=color,
+                    markeredgewidth=CUMULATIVE_CDF_MARKER_EDGE_LINEWIDTH, zorder=5)
+            ax.vlines(yr, 0.0, threshold, color="#8A8A8A", linestyles="--",
+                      linewidth=CUMULATIVE_CDF_GUIDE_LINEWIDTH, zorder=2)
+            ax.annotate(f"{yr} years", (yr, threshold),
+                        xytext=(6 if yr < 87 else -6, -9), textcoords="offset points",
+                        ha="left" if yr < 87 else "right", va="top",
+                        fontproperties=GLOBAL_FONT_PROP,
+                        fontsize=CUMULATIVE_CDF_ANNOTATION_FONT,
+                        color="black", zorder=6)
+    set_axis_labels(ax, r"Service time, $t$ (years)", "Cumulative probability")
+    ax.set_xlim(0, 100)
+    ax.set_xticks(np.arange(0, 101, 20))
+    # Reference: upward round to nearest tenth +0.1, maximum 1.0.
+    upper = min(1.0, max(0.2, np.ceil((all_max - 1e-12) * 10) / 10 + .1))
+    ax.set_ylim(0, upper)
+    ax.set_yticks(np.round(np.arange(0.0, upper + .051, .1), 10))
+    ax.legend(loc="upper left", frameon=False, ncol=2, handlelength=1.65,
+              columnspacing=.9, handletextpad=.5)
+    ax.grid(False)
+    apply_academic_style(ax)
+    style_thin_black_axes(ax, frame_linewidth=CUMULATIVE_CDF_FRAME_LINEWIDTH,
+                          tick_linewidth=CUMULATIVE_CDF_TICK_LINEWIDTH,
+                          tick_length=CUMULATIVE_CDF_TICK_LENGTH)
+    return fig
 
 
 # ============================================================
@@ -1734,7 +2037,7 @@ def get_grouped_transition_histogram(
 # Streamlit's markdown parser is unreliable for nested HTML <sub> in tiny rows.
 PARAMETER_MATH_LABELS = {
     "Dc_Dp": r"D_c/D_p",
-    "Hp_Dc": r"H_p/D_c",
+    "Hp_Dc": r"H_c/D_c",
     "alpha": r"\alpha",
     "d_l": r"d_l\,\mathrm{(m)}",
     "d_t": r"d_s\,\mathrm{(m)}",
@@ -2042,23 +2345,23 @@ def make_failure_probability_plot(
 # 9a. SFM transition type probabilities and best-fit transition times
 # ============================================================
 def _gof_group_cutpoints(max_year, bin_width):
-    """与 np.histogram(整数年, bins=0,5,...,100) 完全相同的离散年分组。
+    """Use the same discrete year bins as np.histogram(integer_years, bins=0,5,...,100).
 
-    [0,5)含0,1,2,3,4年，底层连续潜在时间区间应是[0,4.5]；
-    [5,10)含5,...,9年，连续区间应是[4.5,9.5]；
-    最后[95,100]包括100年，潜在时间区间为[94.5,100]。
+    [0,5) contains years 0, 1, 2, 3, and 4; the underlying continuous interval is [0, 4.5].
+    [5,10) contains years 5 through 9; the continuous interval is [4.5, 9.5].
+    The final [95,100] bin includes year 100; its continuous interval is [94.5, 100].
     """
     edges = np.arange(0.0, max_year + 0.5*bin_width, bin_width)
     if abs(edges[-1]-max_year)>1e-8:
-        raise ValueError('max_year必须可被bin_width整除')
+        raise ValueError('max_year must be divisible by bin_width')
     cuts = np.r_[0.0, edges[1:-1]-0.5, max_year]
     return edges, cuts
 
 def _heldout_chi_square_gof(observed_years, fitted_bin_prob, min_expected=5.0):
-    """独立验证样本的Pearson χ²检验；相邻分组自动合并使期望频数≥5。
+    """Pearson chi-square goodness-of-fit test on the independent validation set; adjacent bins are merged so expected counts are at least 5.
 
-    参数来自独立训练子集，因此自由度为合并后组数-1（不是组数-1-k）。
-    为防止空分组干扰和过度乐观，禁止仅因实际次数为0就删除分组。
+    Parameters are estimated from the independent training subset; therefore, df equals the number of merged bins minus 1 (not the number of bins minus 1 minus k).
+    To avoid empty-bin interference and overly optimistic results, do not remove bins solely because their observed count is zero.
     """
     observed_counts = np.asarray(observed_years, dtype=float)
     probs = np.asarray(fitted_bin_prob, dtype=float)
@@ -2067,7 +2370,7 @@ def _heldout_chi_square_gof(observed_years, fitted_bin_prob, min_expected=5.0):
         return np.nan, np.nan, 0, 'Invalid counts or probabilities'
     probs = probs / probs.sum()
     expected = n * probs
-    # 从左到右合并连续分组；右侧尾部不足时合并入最后一组。
+    # Merge adjacent bins from left to right; merge any remaining right-tail bins into the last group.
     merged_o=[]; merged_e=[]; o_acc=0.0; e_acc=0.0
     for o,e in zip(observed_counts,expected):
         o_acc+=o; e_acc+=e
@@ -2079,7 +2382,7 @@ def _heldout_chi_square_gof(observed_years, fitted_bin_prob, min_expected=5.0):
             return np.nan,np.nan,0,'Too few expected counts'
         merged_o[-1]+=o_acc; merged_e[-1]+=e_acc
     n_groups=len(merged_o)
-    df=n_groups-1  # 训练数据独立估计全部参数，不扣减拟合参数个数
+    df=n_groups-1  # Parameters are estimated independently from the training data; do not subtract fitted parameters from df.
     if df < 1:
         return np.nan,np.nan,df,'Too few merged bins'
     o_arr=np.asarray(merged_o)
@@ -2090,14 +2393,14 @@ def _heldout_chi_square_gof(observed_years, fitted_bin_prob, min_expected=5.0):
 
 def _fit_transition_times_best_distribution(years_group, bin_width=5.0,
                                              max_year=100.0, *, _training_only=False):
-    """离散整数年极大似然估计 + AIC筛选 + 独立验证集Pearson χ²拟合优度P值。
+    """Discrete-year maximum likelihood estimation, AIC selection, and independent-validation Pearson chi-square goodness-of-fit p-value.
 
-    1) 候选分布5种；全部参数采用整数年份区间概率进行MLE；
-    2) 从观测转移事件随机分出80%训练/20%验证，只用于模型拟合统计；
-    3) 用训练集AIC选择优选分布，保持验证集对选择和参数估计独立；
-    4) 用验证集按5年分组的Pearson卡方计算P值，不把拟合优度P值解释为模型概率；
-    5) 最终绘图参数在全部观测数据上重新拟合，以利用全部信息。
-    分布拟合仍条件化在0-100年已发生转移的样本，不包括右删失样本。
+    1) Five candidate distributions; estimate all parameters by MLE using integer-year interval probabilities.
+    2) Randomly split observed transition events into 80% training and 20% validation subsets for fitting statistics only.
+    3) Select the best-fit distribution by training-set AIC, keeping the validation set independent of model selection and parameter estimation.
+    4) Calculate the Pearson chi-square p-value using 5-year validation bins; do not interpret the goodness-of-fit p-value as a model probability.
+    5) Refit the final plotting parameters using all observed data to use all available information.
+    The distribution fit remains conditional on transitions observed within 0-100 years and excludes right-censored samples.
     """
     from scipy.optimize import minimize
 
@@ -2106,7 +2409,7 @@ def _fit_transition_times_best_distribution(years_group, bin_width=5.0,
     if len(observed) < FIT_MIN_SAMPLES:
         return None, pd.DataFrame()
 
-    # 训练拟合与独立验证。在递归训练阶段不再次分割，也不计算P值。
+    # Fit on the training data and validate independently. Do not split again or calculate p-values during recursive training.
     train_table=None
     heldout_years=None
     if not _training_only and len(observed) >= 2*FIT_MIN_SAMPLES:
@@ -2127,7 +2430,7 @@ def _fit_transition_times_best_distribution(years_group, bin_width=5.0,
     mean_v = max(float(np.mean(observed)),0.1)
     sd_v = max(float(np.std(observed)),0.4)
 
-    # 仅保留原有5种候选分布：Normal、Lognormal、Gamma、Weibull、Beta(0-100)。
+    # Retain the original five candidate distributions: Normal, Lognormal, Gamma, Weibull, and Beta (0-100).
     candidate_cfg = {
         'Normal': {
             'start': [mean_v,np.log(sd_v)],
@@ -2184,7 +2487,7 @@ def _fit_transition_times_best_distribution(years_group, bin_width=5.0,
             return None
         return np.maximum(prob,0.0)
 
-    # 必须使用与整数年直方图一致的4.5/9.5/...分界，而非简单[0,5],[5,10]
+    # Use the same 4.5/9.5/... boundaries as the integer-year histogram, not simple [0,5], [5,10] bins.
     edges,cuts=_gof_group_cutpoints(max_year,bin_width)
     hist_counts,_=np.histogram(observed,bins=edges)
     hist_obs=hist_counts/float(count_total)
@@ -2251,7 +2554,7 @@ def _fit_transition_times_best_distribution(years_group, bin_width=5.0,
         fitted[winner]['name']=winner
         return fitted[winner],table
 
-    # 训练集同时决定分布选择及参数；验证集仅做拟合优度检验，不参与选择。
+    # The training set determines both distribution selection and parameters; the validation set is used only for the goodness-of-fit test.
     train_objs=train_table.attrs.get('fitted_candidates',{})
     train_valid=train_table.loc[np.isfinite(train_table['AIC'])]
     if train_valid.empty:
@@ -2297,37 +2600,17 @@ def _fit_transition_times_best_distribution(years_group, bin_width=5.0,
 TRANSITION_TYPE_FIG_HEIGHT = 4.5  # inches; only this histogram figure
 
 
-def make_transition_type_plot(transition_df):
-    """Relative frequencies among ALL lifecycle samples, including no transition."""
-    type_fig_df = get_transition_type_figure_data(transition_df)
-    labels = type_fig_df["Transition_Type"].tolist()
-    probs = type_fig_df["Probability_AllSamples"].to_numpy(dtype=float)
-    colors = ["#33A1BC" if " to FFF" in v else
-              "#EE95A3" if " to CSF" in v else "#9A9A9A" for v in labels]
-    fig, ax = plt.subplots(figsize=(6, TRANSITION_TYPE_FIG_HEIGHT), dpi=220)
-    x = np.arange(len(labels))
-    ax.bar(x, probs, color=colors, edgecolor="black", linewidth=0.5, alpha=0.88)
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=32, ha="right",
-                       fontsize=FIGURE_TEXT_FONT_SIZE)
-    set_axis_labels(ax, "Transition type", "Probability")
-    set_dynamic_y_axis(ax, float(np.max(probs)) if probs.size else 0.0,
-                       probability=True)
-    ax.grid(False)
-    apply_academic_style(ax)
-    fig.subplots_adjust(left=0.16, right=0.99, top=0.97, bottom=0.38)
-    return fig
 
 
 def fit_transition_density_binaverage_independent(selected_probability, observed_density,
                                                    bin_width=5.0, max_year=100.0):
-    """对5年区间平均密度单独进行最小二乘参数估计，不复用概率图的MLE参数。
+    """Independently estimate parameters by least squares for the 5-year average density; do not reuse the probability plot MLE parameters.
 
-    为便于两图直接对比，分布族保持与概率图AIC选中的分布一致；只独立
-    估计该分布族的参数。观测/模型密度都是：5年分组条件概率 / 5年。
-    区间理论概率沿用原代码的整数年边界0/4.5/9.5/.../100，保证
-    概率图、密度图的统计年份完全一致。不同拟合损失可能产生不同参数，
-    但两组参数也有可能在数值上接近，不会人为强制差异。
+    For direct comparison between the two plots, retain the distribution family selected by AIC for the probability plot; independently
+    estimate only the parameters of that family. Both observed and fitted densities are conditional probabilities per 5-year bin divided by 5 years.
+    The theoretical interval probabilities use the original integer-year boundaries 0/4.5/9.5/.../100 to ensure
+    the probability and density plots use exactly the same year intervals. Different fitting losses may produce different parameters,
+    but the resulting parameter sets may also be numerically similar; no difference is artificially imposed.
     """
     from scipy.optimize import minimize
 
@@ -2338,11 +2621,11 @@ def fit_transition_density_binaverage_independent(selected_probability, observed
     observed_density = np.asarray(observed_density, dtype=float)
     edges, cuts = _gof_group_cutpoints(float(max_year), float(bin_width))
     if len(observed_density) != len(cuts)-1:
-        raise ValueError('区间概率密度长度与5年分组不一致')
+        raise ValueError('Interval density length does not match the 5-year binning')
     if not np.all(np.isfinite(observed_density)) or np.any(observed_density < 0):
-        raise ValueError('观测区间密度中存在非法数值')
+        raise ValueError('Observed interval density contains invalid values')
     if not np.isclose(observed_density.sum() * bin_width, 1.0, atol=1e-8):
-        raise ValueError('观测区间平均密度的积分面积不为1')
+        raise ValueError('The integral of the observed mean interval density is not equal to 1')
 
     if name == 'Normal':
         initial = np.array([float(old['mu']), np.log(float(old['sigma']))])
@@ -2375,7 +2658,7 @@ def fit_transition_density_binaverage_independent(selected_probability, observed
             a, b = map(float, np.exp(v))
             return stats.beta(a=a, b=b, loc=0, scale=max_year), {'a':a, 'b':b}
     else:
-        raise ValueError(f'不支持的区间密度拟合分布: {name}')
+        raise ValueError(f'Unsupported interval-density fitting distribution: {name}')
 
     interval_mass = selected_probability['interval_mass']
     normalization = max(float(np.sum(observed_density**2)), 1e-12)
@@ -2402,7 +2685,7 @@ def fit_transition_density_binaverage_independent(selected_probability, observed
         if np.isfinite(solution.fun) and (best is None or solution.fun < best.fun):
             best = solution
     if best is None or best.fun >= 1e10:
-        raise RuntimeError(f'{name}: 5年平均密度独立拟合未得到有效结果')
+        raise RuntimeError(f'{name}: independent fitting of the 5-year average density did not produce a valid result')
 
     dist, params = make_dist(best.x)
     fit_mass = interval_mass(dist, cuts[:-1], cuts[1:])
@@ -2497,7 +2780,7 @@ TRANSITION_TIME_TARGET_TYPES = {
 
 
 def get_target_observed_transition_years(transition_df, target):
-    """Observed first-transition years for the given plotted target group."""
+    """Observed first reliable entry into the given target, per sample."""
     if target not in TRANSITION_TIME_TARGET_TYPES:
         raise ValueError(f"Unknown transition target: {target}")
     mask = (
@@ -2561,7 +2844,7 @@ def format_fitted_legend(selected):
 
 
 def compute_transition_fits(transition_df, hist_df):
-    """Reference five candidate MLE fits and independent held-out GOF tests."""
+    """Fit the first-entry-to-target time distributions and held-out GOF tests."""
     fit_results = {}
     tables = []
     summary = []
@@ -2635,7 +2918,9 @@ TRANSITION_LEGEND_LINE_LENGTH_PT = 18.0      # Colored line before "Fitted ... P
 TRANSITION_LEGEND_LINE_TEXT_GAP_PT = 4.0     # Line-to-text spacing
 TRANSITION_LEGEND_ROW_GAP_PT = -0.6          # Tight vertical gap between Mean and COV (pt)
 TRANSITION_LEGEND_TITLE_TO_MEAN_GAP_PT = 6.0  # Extra gap after Fitted ... PDF, before Mean (pt)
-TRANSITION_LEGEND_CORNER_INSET = 0.04     # Distance from the top/corner in axes fraction
+TRANSITION_LEGEND_CORNER_INSET = 0.04     # Horizontal inset from each top corner
+TRANSITION_LEGEND_TOP_Y = 0.865           # Lift the legend slightly; keep clear of the inside-axis title
+TRANSITION_TIME_INSIDE_TITLE_Y = 0.948    # Place the panel heading a little lower inside the frame
 
 
 def apply_transition_time_font_sizes(ax):
@@ -2703,7 +2988,7 @@ def draw_compact_transition_legend(ax, fit_label, line_color, target, *, dashboa
     anchored = AnchoredOffsetbox(
         loc="upper right" if on_right else "upper left", child=legend_contents,
         pad=0.0, borderpad=0.0, frameon=False,
-        bbox_to_anchor=(1.0 - inset if on_right else inset, 1.0 - inset),
+        bbox_to_anchor=(1.0 - inset if on_right else inset, TRANSITION_LEGEND_TOP_Y),
         bbox_transform=ax.transAxes,
     )
     anchored.set_zorder(12)
@@ -2712,7 +2997,7 @@ def draw_compact_transition_legend(ax, fit_label, line_color, target, *, dashboa
 
 
 def make_transition_histogram_panel(hist_df, selected_fits, target_only=None):
-    """1x2 conditional 5-year average densities and grouped fitted curves."""
+    """Conditional 5-year first-target-entry densities and fitted curves."""
     fig, axes = (plt.subplots(1, 2, figsize=(10.8, 4.2), dpi=220)
                  if target_only is None
                  else plt.subplots(figsize=(4.3, 3.15), dpi=190))
@@ -2766,8 +3051,14 @@ def make_transition_histogram_panel(hist_df, selected_fits, target_only=None):
         ax.set_xlim(0, 100)
         ax.set_xticks(np.arange(0, 101, 20))
         set_axis_labels(ax, r"Transition time, $t_{tran}$ (years)", "Probability density")
-        ax.set_title(title, fontproperties=GLOBAL_FONT_PROP,
-                     fontsize=FIGURE_TITLE_FONT_SIZE, pad=6)
+        # Move the target heading INSIDE the axes instead of above the frame.
+        ax.set_title("")
+        ax.text(.5, TRANSITION_TIME_INSIDE_TITLE_Y, title,
+                transform=ax.transAxes, ha="center", va="top",
+                fontproperties=GLOBAL_FONT_PROP,
+                fontsize=DASHBOARD_PLOT_TITLE_FONT_PT if target_only is not None
+                         else TRANSITION_TIME_SUBPLOT_TITLE_FONT,
+                zorder=14)
         ax.grid(False)
         apply_academic_style(ax)
         style_thin_black_axes(
@@ -2785,13 +3076,20 @@ def make_transition_histogram_panel(hist_df, selected_fits, target_only=None):
 
 
 def compute_all_sample_transition_cdf(transition_df, years=YEARS_FULL,
-                                      threshold_fff=0.20, threshold_csf=0.10):
-    """Cumulative probability of a first reliable transition / ALL samples."""
-    n_total = len(transition_df)
+                                      threshold_fff=0.20, threshold_csf=0.10,
+                                      n_total=None):
+    """First entry into each target divided by ALL simulated structures.
+
+    The target event table can contain two rows for one sample (one FFF,
+    one CSF), so its row count must never be used as the denominator.
+    """
+    if n_total is None and "Transition_Sequence" in transition_df.columns:
+        raise ValueError("n_total is required for first-target event CDF")
+    n_total = int(n_total) if n_total is not None else len(transition_df)
     if n_total < 1:
         raise ValueError("No transition samples")
     years = np.asarray(years, dtype=int)
-    flagged = transition_df.loc[transition_df["Transition_Flag"]]
+    flagged = transition_df.loc[transition_df["Transition_Flag"].astype(bool)]
     result = pd.DataFrame({"Year": years})
     summaries = []
     for target, internal, threshold in [
@@ -2800,6 +3098,9 @@ def compute_all_sample_transition_cdf(transition_df, years=YEARS_FULL,
     ]:
         mask = flagged["Transition_Mode"] == internal
         vals = flagged.loc[mask, "Transition_Year"].to_numpy(dtype=int)
+        if (np.any(vals < 0) or np.any(vals >= len(years))
+                or len(vals) > n_total):
+            raise ValueError(f"{target}: invalid first-target event years or total")
         counts = np.bincount(vals, minlength=len(years))[:len(years)]
         cum_counts = np.cumsum(counts)
         probs = cum_counts / n_total
@@ -2970,7 +3271,9 @@ def style_dashboard_plot(fig, kind="standard"):
         fig.subplots_adjust(left=.19, right=.955, top=.96,
                             bottom=TRANSITION_TYPES_BOTTOM_FRAC)
     elif kind == "histogram":
-        fig.subplots_adjust(left=.19, right=.955, top=.90, bottom=.20)
+        # Match the four top-row axes: previously top=.90 left these frames
+        # noticeably shorter than the corrosion and SFM probability axes.
+        fig.subplots_adjust(left=.19, right=.955, top=.96, bottom=.20)
     elif kind == "cdf":
         fig.subplots_adjust(left=.19, right=.955, top=.90, bottom=.20)
     else:
@@ -2995,9 +3298,9 @@ DASHBOARD_CHART_TITLES = {
     "hist_fff": "The distributions of SFM transition times",
     "hist_csf": "The distributions of SFM transition times",
     "scour": "Scour depth evolution",
-    "types": "The distribution of SFM transition types",
-    "cdf_fff": "Cumulative SFM transition probability curves",
-    "cdf_csf": "Cumulative SFM transition probability curves",
+    "trans_count": "The distribution of the number of transitions",
+    "trans_types": "The distribution of SFM transition types",
+    "cdf_combined": "Cumulative SFM transition probability curves",
 }
 
 
@@ -3014,10 +3317,10 @@ def render_dashboard_results(results):
                 st.image(results["plots"][key], width="stretch")
 
         bottom = st.columns(4, gap="small")
-        for col, key in zip(bottom, ("scour", "types", "cdf_fff", "cdf_csf")):
+        for col, key in zip(bottom, ("scour", "trans_count", "trans_types", "cdf_combined")):
             with col:
                 st.markdown(
-                    f"<div class='dashboard-chart-title'>{DASHBOARD_CHART_TITLES[key]}</div>",
+                    f"<div class='dashboard-chart-title dashboard-chart-title--bottom'>{DASHBOARD_CHART_TITLES[key]}</div>",
                     unsafe_allow_html=True,
                 )
                 st.image(results["plots"][key], width="stretch")
@@ -3161,7 +3464,7 @@ def get_transition_time_target_figure_data(hist_df, selected_fits, target,
     output.loc[0, "Fit_Method"] = "Independent least squares of 5-year mean densities"
     output.loc[0, "Curve_Method"] = "Reference PCHIP: fitted bin centers, endpoints (0,0) and (100,0)"
     output.loc[0, "Legend_Statistics_Method"] = (
-        "Observed first-transition time samples for this target within 0-100 years; "
+        "First reliable entry into this target per sample within 0-100 years; "
         "Mean=sample average, Std=np.std(ddof=0), COV=Std/Mean. "
         "Fitted distribution parameters still describe the fitted density curve."
     )
@@ -3230,8 +3533,11 @@ def get_cdf_target_figure_data(cumulative_df, crossing_df, target):
 
 
 def build_eight_figure_export_tables(result, sd_cov, selected_fits,
-                                     cumulative_df, crossing_df):
-    """Eight Excel sheets in top-row then bottom-row chart order."""
+                                     cumulative_df, crossing_df,
+                                     count_summary=None, type_summary=None):
+    """One worksheet for each of the eight visible plots, in display order."""
+    if count_summary is None or type_summary is None:
+        raise ValueError("All-event summary tables are required for the eight-chart export")
     annual = pd.DataFrame({"Year": YEARS_FULL})
     annual_curves = {
         display_label(name): result["annual_probs"][:, idx]
@@ -3241,24 +3547,34 @@ def build_eight_figure_export_tables(result, sd_cov, selected_fits,
         if label in annual_curves:
             annual[f"Probability_{label}"] = annual_curves[label]
 
-    # Ordered insertion is intentional and matches render_dashboard_results:
-    # row 1: corrosion | SFM probs | transition to FFF | transition to CSF
-    # row 2: scour     | transition types | CDF to FFF | CDF to CSF
+    combined = pd.DataFrame({"Year": cumulative_df["Year"].to_numpy(dtype=int)})
+    for target in ("FFF", "CSF"):
+        df = get_cdf_target_figure_data(cumulative_df, crossing_df, target)
+        for col in ("New_Transition_Count", "Cumulative_Transition_Count",
+                    "Cumulative_Probability_AllSamples", "Threshold_Probability"):
+            combined[f"{target}_{col}"] = df[col].to_numpy()
+        for col in ("Reached_Within_100yr", "Cumulative_Probability_At_100yr",
+                    "First_Reaching_Year", "Probability_At_First_Reaching_Year",
+                    "Plot_Marker_Year", "Plot_Marker_Probability"):
+            if col in df.columns:
+                combined.loc[0, f"{target}_{col}"] = df.loc[0, col]
+    combined.loc[0, "Curve_Interpretation"] = (
+        "Cumulative probability of FIRST reliable ENTRY into each target "
+        "(at most once per target per sample) / ALL MC samples")
+
     return {
         "01_Corrosion_Level": get_corrosion_figure_data(
             YEARS_FULL, result["corr_long"], result["corr_stir"]),
         "02_SFM_Probabilities": annual,
         "03_TimeDist_to_FFF": get_transition_time_target_figure_data(
-            result["hist_df"], selected_fits, "To_FFF", result["transition_df"]),
+            result["hist_df"], selected_fits, "To_FFF", result["first_target_events"]),
         "04_TimeDist_to_CSF": get_transition_time_target_figure_data(
-            result["hist_df"], selected_fits, "To_CSF", result["transition_df"]),
+            result["hist_df"], selected_fits, "To_CSF", result["first_target_events"]),
         "05_Scour_Depth": get_scour_figure_data(
             YEARS_FULL, result["samples_dict"], sd_cov),
-        "06_Transition_Types": get_transition_type_figure_data(result["transition_df"]),
-        "07_Cumulative_to_FFF": get_cdf_target_figure_data(
-            cumulative_df, crossing_df, "FFF"),
-        "08_Cumulative_to_CSF": get_cdf_target_figure_data(
-            cumulative_df, crossing_df, "CSF"),
+        "06_Transition_Count": count_summary.copy(),
+        "07_Transition_Types": type_summary.copy(),
+        "08_Combined_CDF": combined,
     }
 
 
@@ -3432,7 +3748,7 @@ def render_lifecycle_app(assets=None):
             part1_config = [
                 ("Dc_Dp", "D<sub>c</sub>/D<sub>p</sub>", "Column-to-pile diameter ratio", "1.5~3.0",
                  1.5, 3.0, 2.0, "Normal", 0.10, 0.1, "%.2f", struct_opts),
-                ("Hp_Dc", "H<sub>p</sub>/D<sub>c</sub>", "Column aspect ratio", "1~5",
+                ("Hp_Dc", "H<sub>c</sub>/D<sub>c</sub>", "Column aspect ratio", "1~5",
                  1.0, 5.0, 3.0, "Normal", 0.26, 0.1, "%.2f", struct_opts),
                 ("alpha", "α", "Column axial load ratio", "0.05~0.25",
                  0.05, 0.25, 0.15, "Normal", 0.12, 0.01, "%.2f", struct_opts),
@@ -3601,15 +3917,25 @@ def render_lifecycle_app(assets=None):
                     seed=RANDOM_SEED,
                 )
                 tdf = result["transition_df"]
+                # Count/type plots retain all reliable events. The density
+                # panels and CDF use each sample's first ENTRY into each
+                # target, even when it follows an earlier different transition.
+                count_summary, type_summary, repeated_events = (
+                    summarize_all_reliable_transitions(result))
+                first_target_events = extract_first_target_transition_events(
+                    repeated_events, n_samples=len(tdf))
+                result["first_target_events"] = first_target_events
+                result["hist_df"] = get_grouped_transition_histogram(
+                    first_target_events, bin_width=TRANSITION_HIST_BIN_WIDTH,
+                    n_total=len(tdf))
                 selected_fits, fit_table, fit_summary = compute_transition_fits(
-                    tdf, result["hist_df"])
+                    first_target_events, result["hist_df"])
                 cumulative_df, crossing_df = compute_all_sample_transition_cdf(
-                    tdf, YEARS_FULL,
+                    first_target_events, YEARS_FULL,
                     threshold_fff=float(threshold_fff_pct) / 100.0,
                     threshold_csf=float(threshold_csf_pct) / 100.0,
+                    n_total=len(tdf),
                 )
-
-                # Preserve numeric output & all eight existing plot contents.
                 plot_builders = {
                     "corrosion": lambda: make_corrosion_plot(
                         YEARS_FULL, result["corr_long"], result["corr_stir"]),
@@ -3621,18 +3947,17 @@ def render_lifecycle_app(assets=None):
                         result["hist_df"], selected_fits, target_only="To_CSF"),
                     "scour": lambda: make_scour_plot(
                         YEARS_FULL, result["samples_dict"], sd_cov),
-                    "types": lambda: make_transition_type_plot(tdf),
-                    "cdf_fff": lambda: make_all_sample_cdf_panel(
-                        cumulative_df, crossing_df, target_only="FFF"),
-                    "cdf_csf": lambda: make_all_sample_cdf_panel(
-                        cumulative_df, crossing_df, target_only="CSF"),
+                    "trans_count": lambda: make_transition_count_plot(count_summary),
+                    "trans_types": lambda: make_transition_type_plot(type_summary),
+                    "cdf_combined": lambda: make_combined_cumulative_plot(
+                        cumulative_df, crossing_df),
                 }
                 plots = {}
                 for name, builder in plot_builders.items():
                     fig = builder()
-                    if name in ("corrosion", "failure", "scour", "types"):
+                    if name in ("corrosion", "failure", "scour", "trans_count", "trans_types", "cdf_combined"):
                         style_dashboard_plot(fig,
-                            kind="types" if name == "types" else "standard")
+                            kind="types" if name == "trans_types" else "standard")
                     plots[name] = dashboard_figure_png(fig)
 
                 # Existing annual-mode crossover text (same logic and order).
@@ -3681,7 +4006,8 @@ def render_lifecycle_app(assets=None):
 
                 # Eight worksheets: one-to-one with the eight displayed plots.
                 figure_tables = build_eight_figure_export_tables(
-                    result, sd_cov, selected_fits, cumulative_df, crossing_df)
+                    result, sd_cov, selected_fits, cumulative_df, crossing_df,
+                    count_summary=count_summary, type_summary=type_summary)
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine="openpyxl") as writer:
                     for sheet_name, table in figure_tables.items():
