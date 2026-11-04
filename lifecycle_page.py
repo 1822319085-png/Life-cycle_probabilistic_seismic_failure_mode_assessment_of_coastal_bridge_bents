@@ -3938,7 +3938,7 @@ def render_lifecycle_app(assets=None):
             st.error("model_assets_numpy.pkl was not found. "
                      "Place it in the same directory as this Python file.")
         else:
-            with st.spinner("Running Monte Carlo lifecycle analysis and generating plots..."):
+            with st.spinner("Running Monte Carlo simulations and generating plots..."):
                 all_inputs = user_struct + user_corr + user_scour
                 sd_cov = float(next(p for p in all_inputs
                                     if p["id"] == "SD_val")["raw_disp"])
@@ -4058,7 +4058,7 @@ def render_lifecycle_app(assets=None):
         st.download_button(
             "Download Results (Excel)",
             data=excel_bytes if excel_bytes is not None else b"",
-            file_name="Lifecycle_Assessment_Results.xlsx",
+            file_name="Lifecycle_Probabilistic_SFM_Assessment_Results.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary",
             disabled=excel_bytes is None,
