@@ -12,6 +12,7 @@ lifecycle_page.py: coastal bridge-bent lifecycle failure-mode GUI.
   empirical mean/COV of observed first-transition time samples (not fit moments).
 """
 
+import base64
 import io
 import os
 import re
@@ -121,12 +122,9 @@ CURRENT_CASE2_DEFAULTS = {
 # ============================================================
 @st.cache_resource
 def load_numpy_assets(model_path: str = "model_assets_numpy.pkl"):
-    model_file = Path(model_path)
-    if not model_file.is_absolute():
-        model_file = Path(__file__).resolve().parent / model_file
-    if not model_file.is_file():
+    if not os.path.exists(model_path):
         return None
-    return joblib.load(model_file)
+    return joblib.load(model_path)
 
 
 def canonical_label(label):
@@ -285,21 +283,8 @@ DASHBOARD_ROW_GAP_REM = 0.25  # Vertical gap between the two dashboard rows (rem
 TRANSITION_TYPES_BOTTOM_FRAC = 0.265   # Smaller = less blank below type labels
 
 
-
-def render_compat_html(content):
-    """Render trusted app-owned HTML without the st.html frontend JS chunk."""
-    import textwrap
-    content = textwrap.dedent(content) if content.lstrip().startswith("<style>") else content
-    st.markdown(content, unsafe_allow_html=True)
-
-
-def render_compat_html_in_container(target, content):
-    """Render trusted HTML in its original Streamlit column."""
-    target.markdown(content, unsafe_allow_html=True)
-
-
 def inject_css():
-    render_compat_html(
+    st.markdown(
         """
         <style>
         html, body, *,
@@ -666,8 +651,7 @@ def inject_css():
             row-gap: __DASHBOARD_ROW_GAP_REM__rem !important;
         }
 
-        /* Streamlit inserts extra vertical space between the caption Markdown
-           and st.image in a column; remove only that local gap. */
+        /* Remove only the local gap between chart captions and images. */
         .st-key-dashboard_plots [data-testid="stColumn"] > [data-testid="stVerticalBlock"],
         .st-key-dashboard_plots [data-testid="stColumn"] [data-testid="stVerticalBlock"] {
             gap: __DASHBOARD_CAPTION_IMAGE_GAP_REM__rem !important;
@@ -677,7 +661,8 @@ def inject_css():
             width: 100% !important;
             margin: 0 !important;
         }
-        .st-key-dashboard_plots [data-testid="stImage"] img {
+        .st-key-dashboard_plots [data-testid="stImage"] img,
+        .st-key-dashboard_plots .inline-png-image {
             display: block;
             width: 100%;
             height: auto;
@@ -851,8 +836,19 @@ def inject_css():
             font-size: inherit !important;
             font-weight: 700 !important;
         }
+        /* Reserve bottom space inside only the two reference-image cards. */
+        .st-key-schematic_reference .inline-png-container,
+        .st-key-sfm_reference .inline-png-container {
+            display: flow-root;
+            box-sizing: border-box;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 0 16px !important;
+        }
         .st-key-sfm_reference [data-testid="stImage"] img,
-        .st-key-schematic_reference [data-testid="stImage"] img {
+        .st-key-schematic_reference [data-testid="stImage"] img,
+        .st-key-sfm_reference .inline-png-image,
+        .st-key-schematic_reference .inline-png-image {
             max-width: 100%;
             height: auto;
             object-fit: contain;
@@ -889,6 +885,7 @@ def inject_css():
         .replace("__DASHBOARD_BOTTOM_CAPTION_HEIGHT_PX__", str(DASHBOARD_BOTTOM_CAPTION_HEIGHT_PX))
         .replace("__DASHBOARD_CAPTION_IMAGE_GAP_REM__", str(DASHBOARD_CAPTION_IMAGE_GAP_REM))
         .replace("__DASHBOARD_ROW_GAP_REM__", str(DASHBOARD_ROW_GAP_REM)),
+        unsafe_allow_html=True,
     )
 
 
@@ -2106,8 +2103,9 @@ def render_param_section(title, params_config, use_std=False):
     metadata; the distribution selector is correctly headed Distribution.
     """
     if title:
-        render_compat_html(
+        st.markdown(
             f"<div class='section-header'>{title}</div>",
+            unsafe_allow_html=True,
         )
 
     # A narrower Distribution column plus wider inter-column gaps.
@@ -2116,24 +2114,14 @@ def render_param_section(title, params_config, use_std=False):
                "Std" if use_std else "COV", "Range"]
     header_cols = st.columns(column_widths, gap="small")
     for col, label in zip(header_cols, headers):
-        render_compat_html_in_container(col, 
+        col.markdown(
             f"<div class='col-header'>{label}</div>",
+            unsafe_allow_html=True,
         )
-    render_compat_html("<hr class='parameter-divider'>")
+    st.markdown("<hr class='parameter-divider'>", unsafe_allow_html=True)
 
     user_vals = []
-    # A diagnostic-only cap allows testing 1, 5, 10, or all rows per section.
-    # Normal deployment never reads or changes this cap.
-    displayed_configs = params_config
-    if str(st.query_params.get("diag", "")).lower() == "inputs":
-        row_limit = st.query_params.get("rows")
-        if row_limit is not None:
-            try:
-                limit = max(1, min(len(params_config), int(row_limit)))
-                displayed_configs = params_config[:limit]
-            except (TypeError, ValueError):
-                pass
-    for cfg in displayed_configs:
+    for cfg in params_config:
         (p_id, html_name, _description, rng_str, p_min, p_max,
          p_mean, p_dist, p_disp, p_step, p_fmt, dist_opts) = cfg
 
@@ -2195,8 +2183,9 @@ def render_param_section(title, params_config, use_std=False):
                     label_visibility="collapsed",
                 )
 
-        render_compat_html_in_container(c5, 
+        c5.markdown(
             f"<div class='parameter-range'>{rng_str}</div>",
+            unsafe_allow_html=True,
         )
 
         if use_std:
@@ -3304,6 +3293,107 @@ def style_dashboard_plot(fig, kind="standard"):
     return fig
 
 
+def inject_inline_image_viewer():
+    """Style the native dialog without running custom browser scripts."""
+    st.html(
+        """
+        <style>
+        div[role="dialog"]:has(.lh-inline-dialog-image) {
+            width: min(1500px, 96vw) !important;
+            max-width: 96vw !important;
+        }
+        .lh-inline-dialog-stage {
+            width: 100%; max-height: 76vh; overflow: auto;
+            box-sizing: border-box; overscroll-behavior: contain;
+        }
+        .lh-inline-dialog-image {
+            display: block; height: auto; margin: 0 auto;
+        }
+        </style>
+        """
+    )
+
+
+def clear_inline_image_dialog():
+    st.session_state.pop("lh_selected_inline_image", None)
+
+
+@st.dialog("Image preview", width="large", on_dismiss=clear_inline_image_dialog)
+def show_inline_image_dialog(image_bytes, alt_text):
+    """Native modal: its widgets rerun only this dialog, not the MC analysis."""
+    from html import escape
+
+    if alt_text:
+        st.caption(alt_text)
+    original_size = st.toggle("Original size", key="lh_image_original_size")
+    image_style = (
+        "width:auto;max-width:none;"
+        if original_size else "width:100%;max-width:100%;"
+    )
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    st.markdown(
+        '<div class="lh-inline-dialog-stage">'
+        f'<img class="lh-inline-dialog-image" '
+        f'src="data:image/png;base64,{encoded}" '
+        f'alt="{escape(str(alt_text), quote=True)}" '
+        f'style="{image_style}height:auto;">'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_inline_png(image_source, alt_text="", image_key=""):
+    """Keep the inline PNG and cover it with a native transparent button."""
+    from html import escape
+
+    if isinstance(image_source, (str, os.PathLike)):
+        image_bytes = Path(image_source).read_bytes()
+    else:
+        image_bytes = bytes(image_source)
+    if not image_key:
+        raise ValueError("Each clickable image requires a unique image_key.")
+    safe_key = re.sub(r"[^a-zA-Z0-9_]", "_", str(image_key))
+    container_key = f"lh_thumb_{safe_key}"
+    button_key = f"lh_open_{safe_key}"
+    scope = f".st-key-{container_key}"
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    with st.container(key=container_key):
+        st.markdown(
+            '<style>'
+            f'{scope} {{position:relative;gap:0 !important;row-gap:0 !important;}}'
+            f'{scope} [data-testid="stElementContainer"]:has(button) '
+            '{position:absolute !important;inset:0 !important;'
+            'width:100% !important;height:100% !important;margin:0 !important;}'
+            f'{scope} [data-testid="stButton"] '
+            '{width:100% !important;height:100% !important;}'
+            f'{scope} button '
+            '{width:100% !important;height:100% !important;min-height:0 !important;'
+            'padding:0 !important;margin:0 !important;border:0 !important;'
+            'border-radius:0 !important;background:transparent !important;'
+            'box-shadow:none !important;color:transparent !important;cursor:zoom-in !important;}'
+            f'{scope} button p {{opacity:0 !important;}}'
+            f'{scope} button:focus-visible '
+            '{outline:2px solid #3b82f6 !important;outline-offset:-2px;}'
+            '</style>'
+            '<div class="inline-png-container" '
+            'style="width:100%;margin:0;padding:0;line-height:0;">'
+            f'<img class="inline-png-image" src="data:image/png;base64,{encoded}" '
+            f'alt="{escape(str(alt_text), quote=True)}" '
+            'style="display:block;width:100%;max-width:100%;height:auto;'
+            'object-fit:contain;margin:0;">'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        clicked = st.button(
+            f"Enlarge {alt_text or 'image'}",
+            key=button_key,
+            width="stretch",
+        )
+    if clicked:
+        st.session_state["lh_image_original_size"] = False
+        st.session_state["lh_selected_inline_image"] = (image_bytes, alt_text)
+
+
 def dashboard_figure_png(fig):
     """Store only compact plot bytes, not the large MC state, across UI reruns."""
     try:
@@ -3333,31 +3423,37 @@ def render_dashboard_results(results):
         top = st.columns(4, gap="small")
         for col, key in zip(top, ("corrosion", "failure", "hist_fff", "hist_csf")):
             with col:
-                render_compat_html(
+                st.markdown(
                     f"<div class='dashboard-chart-title'>{DASHBOARD_CHART_TITLES[key]}</div>",
+                    unsafe_allow_html=True,
                 )
-                st.image(results["plots"][key], width="stretch")
+                render_inline_png(results["plots"][key], DASHBOARD_CHART_TITLES[key], image_key=key)
 
         bottom = st.columns(4, gap="small")
         for col, key in zip(bottom, ("scour", "trans_count", "trans_types", "cdf_combined")):
             with col:
-                render_compat_html(
+                st.markdown(
                     f"<div class='dashboard-chart-title dashboard-chart-title--bottom'>{DASHBOARD_CHART_TITLES[key]}</div>",
+                    unsafe_allow_html=True,
                 )
-                st.image(results["plots"][key], width="stretch")
+                render_inline_png(results["plots"][key], DASHBOARD_CHART_TITLES[key], image_key=key)
 
     # Original output texts, preserved below all eight charts.
-    render_compat_html("<div class='section-header'>Simulation results</div>")
+    st.markdown("<div class='section-header'>Simulation results</div>",
+                unsafe_allow_html=True)
     note_columns = st.columns([1.15, 1, 1.2], gap="medium")
     with note_columns[0]:
-        render_compat_html("<div class='dashboard-notes'>" +
-                    results["crossover_html"] + "</div>")
+        st.markdown("<div class='dashboard-notes'>" +
+                    results["crossover_html"] + "</div>",
+                    unsafe_allow_html=True)
     with note_columns[1]:
-        render_compat_html("<div class='dashboard-notes'>" +
-                    results["transition_summary_html"] + "</div>")
+        st.markdown("<div class='dashboard-notes'>" +
+                    results["transition_summary_html"] + "</div>",
+                    unsafe_allow_html=True)
     with note_columns[2]:
-        render_compat_html("<div class='dashboard-notes'>" +
-                    results["cdf_years_html"] + "</div>")
+        st.markdown("<div class='dashboard-notes'>" +
+                    results["cdf_years_html"] + "</div>",
+                    unsafe_allow_html=True)
 
 
 
@@ -3604,8 +3700,9 @@ def render_calculation_formulas():
     Adjustable horizontal equation spacing, header padding, and caption-to-math
     distance are available in GUI presentation controls at the top of the file.
     """
-    render_compat_html(
+    st.markdown(
         "<div class='reference-section-title'>Related Calculation Formulas</div>",
+        unsafe_allow_html=True,
     )
     formulas = [
         (
@@ -3659,8 +3756,9 @@ def render_glossary_group(title, configs):
     """Individual rows with a separator, using the INPUT TABLE math symbols."""
     from html import escape
 
-    render_compat_html(
+    st.markdown(
         f"<div class='glossary-group-title'>{escape(title)}</div>",
+        unsafe_allow_html=True,
     )
     for cfg in configs:
         param_id, description = cfg[0], cfg[2]
@@ -3671,8 +3769,9 @@ def render_glossary_group(title, configs):
             with symbol_column:
                 st.markdown("$" + format_parameter_math(param_id) + "$")
             with description_column:
-                render_compat_html(
+                st.markdown(
                     f"<div class='glossary-meaning'>{description if param_id == 'SD_val' else escape(description)}</div>",
+                    unsafe_allow_html=True,
                 )
 
 
@@ -3687,24 +3786,26 @@ def _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg):
     schematic_col, descriptions_col = st.columns([1.05, 2.95], gap="medium")
     with schematic_col:
         with st.container(border=True, key="schematic_reference"):
-            render_compat_html(
+            st.markdown(
                 "<div class='reference-card-title'>Structural Schematic</div>",
+                unsafe_allow_html=True,
             )
             structure_path = Path(__file__).parent / "GUI_structure.png"
             if structure_path.exists():
-                st.image(str(structure_path), width="stretch")
+                render_inline_png(structure_path, "Structural Schematic", image_key="schematic")
             else:
                 st.caption(
                     "Place GUI_structure.png beside this Python file "
                     "to display the structural schematic."
                 )
         with st.container(border=True, key="sfm_reference"):
-            render_compat_html(
+            st.markdown(
                 "<div class='reference-card-title'>Seismic failure modes</div>",
+                unsafe_allow_html=True,
             )
             sfm_image_path = Path(__file__).parent / "GUI_SFM.png"
             if sfm_image_path.exists():
-                st.image(str(sfm_image_path), width="stretch")
+                render_inline_png(sfm_image_path, "Seismic failure modes", image_key="sfm")
             else:
                 st.caption(
                     "Place GUI_SFM.png beside this Python file "
@@ -3712,8 +3813,9 @@ def _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg):
                 )
     with descriptions_col:
         with st.container(border=True, key="parameter_glossary"):
-            render_compat_html(
+            st.markdown(
                 "<div class='reference-card-title'>Parameter Descriptions</div>",
+                unsafe_allow_html=True,
             )
             # One native KaTeX symbol for each of the 35 input definitions.
             # Balance the 17 structural rows against 7 + 11 right-side rows.
@@ -3730,31 +3832,21 @@ def _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg):
 # ============================================================
 def render_lifecycle_app(assets=None):
     """Top input dashboard and 2x4 plot matrix, matching GUI.png reference."""
-    diagnostic_stage = str(st.query_params.get("diag", "")).strip().lower()
     inject_css()
-    if diagnostic_stage == "css":
-        st.success("DIAGNOSTIC PASS: full GUI CSS was sent to the browser.")
-        return
+    inject_inline_image_viewer()
     if assets is None:
         assets = load_numpy_assets()
-    if diagnostic_stage == "model":
-        st.write("Model file:", "loaded" if assets is not None else "not found")
-        st.success("DIAGNOSTIC PASS: model initialization stage completed.")
-        return
 
     # Explicit, full-height block plus toolbar clearance avoids the cropped
     # native H1 observed at the very top of the user's Streamlit screenshot.
     with st.container(key="dashboard_header"):
-        render_compat_html(
+        st.markdown(
             "<div class='dashboard-main-title'>"
             "Life-cycle probabilistic seismic failure mode assessment "
             "of coastal bridge bents</div>"
             "<hr class='dashboard-title-divider'>",
+            unsafe_allow_html=True,
         )
-
-    if diagnostic_stage == "header":
-        st.success("DIAGNOSTIC PASS: header and CSS were rendered.")
-        return
 
     # Upper input area: left = structure + other; right = scour + corrosion.
     left_panel, right_panel = st.columns([1, 1], gap="small")
@@ -3808,7 +3900,8 @@ def render_lifecycle_app(assets=None):
                 use_std=False,
             )
         with st.container(border=True, key="other_card"):
-            render_compat_html("<div class='section-header'>4. Other parameters</div>")
+            st.markdown("<div class='section-header'>4. Other parameters</div>",
+                        unsafe_allow_html=True)
             o1, o2, o3 = st.columns(3, gap="small")
             with o1:
                 mc_samples = st.number_input(
@@ -3860,7 +3953,8 @@ def render_lifecycle_app(assets=None):
             )
 
         with st.container(border=True, key="corrosion_card"):
-            render_compat_html("<div class='section-header'>3. Corrosion model parameters</div>")
+            st.markdown("<div class='section-header'>3. Corrosion model parameters</div>",
+                        unsafe_allow_html=True)
             # Environmental Zone selector removed by request.
             # Preserve original default (Tidal and Splash) parameters.
             acs_def = (7.758, 1.360)
@@ -3902,10 +3996,6 @@ def render_lifecycle_app(assets=None):
             ]
             user_corr = render_param_section("", part2_config, use_std=True)
 
-    if diagnostic_stage == "inputs":
-        st.success("DIAGNOSTIC PASS: parameter input panels finished rendering.")
-        return
-
     # Main actions: equally positioned between the parameter editor and 2x4 plots.
     action_left, action_right = st.columns([1.0, 1.0], gap="small")
     with action_left:
@@ -3913,18 +4003,13 @@ def render_lifecycle_app(assets=None):
         with simulate_center:
             with st.container(key="simulate_action"):
                 predict_clicked = st.button(
-                    "Simulate", type="primary", width="stretch",
-                    disabled=bool(diagnostic_stage))
+                    "Simulate", type="primary", width="stretch")
     with action_right:
         _, download_center, _ = st.columns([0.9, 1.7, 0.9], gap="small")
         with download_center:
             with st.container(key="download_action"):
                 # Populated after MC finishes, without requiring a rerun.
                 download_placeholder = st.empty()
-
-    if diagnostic_stage == "actions":
-        st.success("DIAGNOSTIC PASS: input panels and Simulate control rendered.")
-        return
 
     # All eight graphs are BELOW both input columns, never nested in either one.
     if predict_clicked:
@@ -3934,7 +4019,7 @@ def render_lifecycle_app(assets=None):
             st.error("model_assets_numpy.pkl was not found. "
                      "Place it in the same directory as this Python file.")
         else:
-            with st.spinner("Running Monte Carlo lifecycle analysis and generating plots..."):
+            with st.spinner("Running Monte Carlo simulations and generating plots..."):
                 all_inputs = user_struct + user_corr + user_scour
                 sd_cov = float(next(p for p in all_inputs
                                     if p["id"] == "SD_val")["raw_disp"])
@@ -4054,7 +4139,7 @@ def render_lifecycle_app(assets=None):
         st.download_button(
             "Download Results (Excel)",
             data=excel_bytes if excel_bytes is not None else b"",
-            file_name="Lifecycle_Assessment_Results.xlsx",
+            file_name="Lifecycle_Probabilistic_SFM_Assessment_Results.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary",
             disabled=excel_bytes is None,
@@ -4064,25 +4149,19 @@ def render_lifecycle_app(assets=None):
     if "lifecycle_dashboard_display" in st.session_state:
         render_dashboard_results(st.session_state.lifecycle_dashboard_display)
 
-    if diagnostic_stage == "download":
-        st.success("DIAGNOSTIC PASS: download button rendered (without MC simulation).")
-        return
-
     # Supplementary reference content follows the eight result charts.
     render_calculation_formulas()
-    if diagnostic_stage == "formula":
-        st.success("DIAGNOSTIC PASS: LaTeX formula panel rendered.")
-        return
     render_schematic_and_descriptions(part1_config, part3_config, part2_config)
-    if diagnostic_stage == "reference":
-        st.success("DIAGNOSTIC PASS: both reference images and glossary rendered.")
-        return
-    render_compat_html(
+    selected_image = st.session_state.get("lh_selected_inline_image")
+    if selected_image is not None:
+        show_inline_image_dialog(*selected_image)
+    st.markdown(
         "<div class='dashboard-author-footer'>"
         "Created by Jingcheng Wang, Fuzhou University."
         "<span class='author-contact-gap'></span>"
         "Contact: jingchengwang@fzu.edu.cn"
         "</div>",
+        unsafe_allow_html=True,
     )
 
 
