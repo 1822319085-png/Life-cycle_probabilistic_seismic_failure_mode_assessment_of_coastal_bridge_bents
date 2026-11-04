@@ -12,6 +12,7 @@ lifecycle_page.py: coastal bridge-bent lifecycle failure-mode GUI.
   empirical mean/COV of observed first-transition time samples (not fit moments).
 """
 
+import base64
 import io
 import os
 import re
@@ -650,8 +651,7 @@ def inject_css():
             row-gap: __DASHBOARD_ROW_GAP_REM__rem !important;
         }
 
-        /* Streamlit inserts extra vertical space between the caption Markdown
-           and st.image in a column; remove only that local gap. */
+        /* Remove only the local gap between chart captions and images. */
         .st-key-dashboard_plots [data-testid="stColumn"] > [data-testid="stVerticalBlock"],
         .st-key-dashboard_plots [data-testid="stColumn"] [data-testid="stVerticalBlock"] {
             gap: __DASHBOARD_CAPTION_IMAGE_GAP_REM__rem !important;
@@ -661,7 +661,8 @@ def inject_css():
             width: 100% !important;
             margin: 0 !important;
         }
-        .st-key-dashboard_plots [data-testid="stImage"] img {
+        .st-key-dashboard_plots [data-testid="stImage"] img,
+        .st-key-dashboard_plots .inline-png-image {
             display: block;
             width: 100%;
             height: auto;
@@ -835,8 +836,19 @@ def inject_css():
             font-size: inherit !important;
             font-weight: 700 !important;
         }
+        /* Reserve bottom space inside only the two reference-image cards. */
+        .st-key-schematic_reference .inline-png-container,
+        .st-key-sfm_reference .inline-png-container {
+            display: flow-root;
+            box-sizing: border-box;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 0 16px !important;
+        }
         .st-key-sfm_reference [data-testid="stImage"] img,
-        .st-key-schematic_reference [data-testid="stImage"] img {
+        .st-key-schematic_reference [data-testid="stImage"] img,
+        .st-key-sfm_reference .inline-png-image,
+        .st-key-schematic_reference .inline-png-image {
             max-width: 100%;
             height: auto;
             object-fit: contain;
@@ -3281,6 +3293,27 @@ def style_dashboard_plot(fig, kind="standard"):
     return fig
 
 
+def render_inline_png(image_source, alt_text=""):
+    """Embed PNG bytes in the page instead of requesting a /media/ URL."""
+    from html import escape
+
+    if isinstance(image_source, (str, os.PathLike)):
+        image_bytes = Path(image_source).read_bytes()
+    else:
+        image_bytes = bytes(image_source)
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    st.markdown(
+        '<div class="inline-png-container" '
+        'style="width:100%;margin:0;padding:0;line-height:0;">'
+        f'<img class="inline-png-image" src="data:image/png;base64,{encoded}" '
+        f'alt="{escape(str(alt_text), quote=True)}" '
+        'style="display:block;width:100%;max-width:100%;height:auto;'
+        'object-fit:contain;margin:0;">'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def dashboard_figure_png(fig):
     """Store only compact plot bytes, not the large MC state, across UI reruns."""
     try:
@@ -3314,7 +3347,7 @@ def render_dashboard_results(results):
                     f"<div class='dashboard-chart-title'>{DASHBOARD_CHART_TITLES[key]}</div>",
                     unsafe_allow_html=True,
                 )
-                st.image(results["plots"][key], width="stretch")
+                render_inline_png(results["plots"][key], DASHBOARD_CHART_TITLES[key])
 
         bottom = st.columns(4, gap="small")
         for col, key in zip(bottom, ("scour", "trans_count", "trans_types", "cdf_combined")):
@@ -3323,7 +3356,7 @@ def render_dashboard_results(results):
                     f"<div class='dashboard-chart-title dashboard-chart-title--bottom'>{DASHBOARD_CHART_TITLES[key]}</div>",
                     unsafe_allow_html=True,
                 )
-                st.image(results["plots"][key], width="stretch")
+                render_inline_png(results["plots"][key], DASHBOARD_CHART_TITLES[key])
 
     # Original output texts, preserved below all eight charts.
     st.markdown("<div class='section-header'>Simulation results</div>",
@@ -3679,7 +3712,7 @@ def _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg):
             )
             structure_path = Path(__file__).parent / "GUI_structure.png"
             if structure_path.exists():
-                st.image(str(structure_path), width="stretch")
+                render_inline_png(structure_path, "Structural Schematic")
             else:
                 st.caption(
                     "Place GUI_structure.png beside this Python file "
@@ -3692,7 +3725,7 @@ def _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg):
             )
             sfm_image_path = Path(__file__).parent / "GUI_SFM.png"
             if sfm_image_path.exists():
-                st.image(str(sfm_image_path), width="stretch")
+                render_inline_png(sfm_image_path, "Seismic failure modes")
             else:
                 st.caption(
                     "Place GUI_SFM.png beside this Python file "
