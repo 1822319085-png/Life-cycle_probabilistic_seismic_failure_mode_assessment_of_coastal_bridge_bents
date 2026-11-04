@@ -285,8 +285,21 @@ DASHBOARD_ROW_GAP_REM = 0.25  # Vertical gap between the two dashboard rows (rem
 TRANSITION_TYPES_BOTTOM_FRAC = 0.265   # Smaller = less blank below type labels
 
 
+
+def render_compat_html(content):
+    """Render trusted app-owned HTML without the st.html frontend JS chunk."""
+    import textwrap
+    content = textwrap.dedent(content) if content.lstrip().startswith("<style>") else content
+    st.markdown(content, unsafe_allow_html=True)
+
+
+def render_compat_html_in_container(target, content):
+    """Render trusted HTML in its original Streamlit column."""
+    target.markdown(content, unsafe_allow_html=True)
+
+
 def inject_css():
-    st.html(
+    render_compat_html(
         """
         <style>
         html, body, *,
@@ -2093,7 +2106,7 @@ def render_param_section(title, params_config, use_std=False):
     metadata; the distribution selector is correctly headed Distribution.
     """
     if title:
-        st.html(
+        render_compat_html(
             f"<div class='section-header'>{title}</div>",
         )
 
@@ -2103,10 +2116,10 @@ def render_param_section(title, params_config, use_std=False):
                "Std" if use_std else "COV", "Range"]
     header_cols = st.columns(column_widths, gap="small")
     for col, label in zip(header_cols, headers):
-        col.html(
+        render_compat_html_in_container(col, 
             f"<div class='col-header'>{label}</div>",
         )
-    st.html("<hr class='parameter-divider'>")
+    render_compat_html("<hr class='parameter-divider'>")
 
     user_vals = []
     for cfg in params_config:
@@ -2171,7 +2184,7 @@ def render_param_section(title, params_config, use_std=False):
                     label_visibility="collapsed",
                 )
 
-        c5.html(
+        render_compat_html_in_container(c5, 
             f"<div class='parameter-range'>{rng_str}</div>",
         )
 
@@ -3309,7 +3322,7 @@ def render_dashboard_results(results):
         top = st.columns(4, gap="small")
         for col, key in zip(top, ("corrosion", "failure", "hist_fff", "hist_csf")):
             with col:
-                st.html(
+                render_compat_html(
                     f"<div class='dashboard-chart-title'>{DASHBOARD_CHART_TITLES[key]}</div>",
                 )
                 st.image(results["plots"][key], width="stretch")
@@ -3317,22 +3330,22 @@ def render_dashboard_results(results):
         bottom = st.columns(4, gap="small")
         for col, key in zip(bottom, ("scour", "trans_count", "trans_types", "cdf_combined")):
             with col:
-                st.html(
+                render_compat_html(
                     f"<div class='dashboard-chart-title dashboard-chart-title--bottom'>{DASHBOARD_CHART_TITLES[key]}</div>",
                 )
                 st.image(results["plots"][key], width="stretch")
 
     # Original output texts, preserved below all eight charts.
-    st.html("<div class='section-header'>Simulation results</div>")
+    render_compat_html("<div class='section-header'>Simulation results</div>")
     note_columns = st.columns([1.15, 1, 1.2], gap="medium")
     with note_columns[0]:
-        st.html("<div class='dashboard-notes'>" +
+        render_compat_html("<div class='dashboard-notes'>" +
                     results["crossover_html"] + "</div>")
     with note_columns[1]:
-        st.html("<div class='dashboard-notes'>" +
+        render_compat_html("<div class='dashboard-notes'>" +
                     results["transition_summary_html"] + "</div>")
     with note_columns[2]:
-        st.html("<div class='dashboard-notes'>" +
+        render_compat_html("<div class='dashboard-notes'>" +
                     results["cdf_years_html"] + "</div>")
 
 
@@ -3580,7 +3593,7 @@ def render_calculation_formulas():
     Adjustable horizontal equation spacing, header padding, and caption-to-math
     distance are available in GUI presentation controls at the top of the file.
     """
-    st.html(
+    render_compat_html(
         "<div class='reference-section-title'>Related Calculation Formulas</div>",
     )
     formulas = [
@@ -3635,7 +3648,7 @@ def render_glossary_group(title, configs):
     """Individual rows with a separator, using the INPUT TABLE math symbols."""
     from html import escape
 
-    st.html(
+    render_compat_html(
         f"<div class='glossary-group-title'>{escape(title)}</div>",
     )
     for cfg in configs:
@@ -3647,7 +3660,7 @@ def render_glossary_group(title, configs):
             with symbol_column:
                 st.markdown("$" + format_parameter_math(param_id) + "$")
             with description_column:
-                st.html(
+                render_compat_html(
                     f"<div class='glossary-meaning'>{description if param_id == 'SD_val' else escape(description)}</div>",
                 )
 
@@ -3663,7 +3676,7 @@ def _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg):
     schematic_col, descriptions_col = st.columns([1.05, 2.95], gap="medium")
     with schematic_col:
         with st.container(border=True, key="schematic_reference"):
-            st.html(
+            render_compat_html(
                 "<div class='reference-card-title'>Structural Schematic</div>",
             )
             structure_path = Path(__file__).parent / "GUI_structure.png"
@@ -3675,7 +3688,7 @@ def _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg):
                     "to display the structural schematic."
                 )
         with st.container(border=True, key="sfm_reference"):
-            st.html(
+            render_compat_html(
                 "<div class='reference-card-title'>Seismic failure modes</div>",
             )
             sfm_image_path = Path(__file__).parent / "GUI_SFM.png"
@@ -3688,7 +3701,7 @@ def _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg):
                 )
     with descriptions_col:
         with st.container(border=True, key="parameter_glossary"):
-            st.html(
+            render_compat_html(
                 "<div class='reference-card-title'>Parameter Descriptions</div>",
             )
             # One native KaTeX symbol for each of the 35 input definitions.
@@ -3713,7 +3726,7 @@ def render_lifecycle_app(assets=None):
     # Explicit, full-height block plus toolbar clearance avoids the cropped
     # native H1 observed at the very top of the user's Streamlit screenshot.
     with st.container(key="dashboard_header"):
-        st.html(
+        render_compat_html(
             "<div class='dashboard-main-title'>"
             "Life-cycle probabilistic seismic failure mode assessment "
             "of coastal bridge bents</div>"
@@ -3772,7 +3785,7 @@ def render_lifecycle_app(assets=None):
                 use_std=False,
             )
         with st.container(border=True, key="other_card"):
-            st.html("<div class='section-header'>4. Other parameters</div>")
+            render_compat_html("<div class='section-header'>4. Other parameters</div>")
             o1, o2, o3 = st.columns(3, gap="small")
             with o1:
                 mc_samples = st.number_input(
@@ -3824,7 +3837,7 @@ def render_lifecycle_app(assets=None):
             )
 
         with st.container(border=True, key="corrosion_card"):
-            st.html("<div class='section-header'>3. Corrosion model parameters</div>")
+            render_compat_html("<div class='section-header'>3. Corrosion model parameters</div>")
             # Environmental Zone selector removed by request.
             # Preserve original default (Tidal and Splash) parameters.
             acs_def = (7.758, 1.360)
@@ -4022,7 +4035,7 @@ def render_lifecycle_app(assets=None):
     # Supplementary reference content follows the eight result charts.
     render_calculation_formulas()
     render_schematic_and_descriptions(part1_config, part3_config, part2_config)
-    st.html(
+    render_compat_html(
         "<div class='dashboard-author-footer'>"
         "Created by Jingcheng Wang, Fuzhou University."
         "<span class='author-contact-gap'></span>"
