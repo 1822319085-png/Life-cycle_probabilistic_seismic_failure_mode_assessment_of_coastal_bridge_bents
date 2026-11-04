@@ -2122,7 +2122,18 @@ def render_param_section(title, params_config, use_std=False):
     render_compat_html("<hr class='parameter-divider'>")
 
     user_vals = []
-    for cfg in params_config:
+    # A diagnostic-only cap allows testing 1, 5, 10, or all rows per section.
+    # Normal deployment never reads or changes this cap.
+    displayed_configs = params_config
+    if str(st.query_params.get("diag", "")).lower() == "inputs":
+        row_limit = st.query_params.get("rows")
+        if row_limit is not None:
+            try:
+                limit = max(1, min(len(params_config), int(row_limit)))
+                displayed_configs = params_config[:limit]
+            except (TypeError, ValueError):
+                pass
+    for cfg in displayed_configs:
         (p_id, html_name, _description, rng_str, p_min, p_max,
          p_mean, p_dist, p_disp, p_step, p_fmt, dist_opts) = cfg
 
@@ -3719,9 +3730,17 @@ def _render_reference_materials(structure_cfg, scour_cfg, corrosion_cfg):
 # ============================================================
 def render_lifecycle_app(assets=None):
     """Top input dashboard and 2x4 plot matrix, matching GUI.png reference."""
+    diagnostic_stage = str(st.query_params.get("diag", "")).strip().lower()
     inject_css()
+    if diagnostic_stage == "css":
+        st.success("DIAGNOSTIC PASS: full GUI CSS was sent to the browser.")
+        return
     if assets is None:
         assets = load_numpy_assets()
+    if diagnostic_stage == "model":
+        st.write("Model file:", "loaded" if assets is not None else "not found")
+        st.success("DIAGNOSTIC PASS: model initialization stage completed.")
+        return
 
     # Explicit, full-height block plus toolbar clearance avoids the cropped
     # native H1 observed at the very top of the user's Streamlit screenshot.
@@ -3732,6 +3751,10 @@ def render_lifecycle_app(assets=None):
             "of coastal bridge bents</div>"
             "<hr class='dashboard-title-divider'>",
         )
+
+    if diagnostic_stage == "header":
+        st.success("DIAGNOSTIC PASS: header and CSS were rendered.")
+        return
 
     # Upper input area: left = structure + other; right = scour + corrosion.
     left_panel, right_panel = st.columns([1, 1], gap="small")
@@ -3879,6 +3902,10 @@ def render_lifecycle_app(assets=None):
             ]
             user_corr = render_param_section("", part2_config, use_std=True)
 
+    if diagnostic_stage == "inputs":
+        st.success("DIAGNOSTIC PASS: parameter input panels finished rendering.")
+        return
+
     # Main actions: equally positioned between the parameter editor and 2x4 plots.
     action_left, action_right = st.columns([1.0, 1.0], gap="small")
     with action_left:
@@ -3886,13 +3913,18 @@ def render_lifecycle_app(assets=None):
         with simulate_center:
             with st.container(key="simulate_action"):
                 predict_clicked = st.button(
-                    "Simulate", type="primary", width="stretch")
+                    "Simulate", type="primary", width="stretch",
+                    disabled=bool(diagnostic_stage))
     with action_right:
         _, download_center, _ = st.columns([0.9, 1.7, 0.9], gap="small")
         with download_center:
             with st.container(key="download_action"):
                 # Populated after MC finishes, without requiring a rerun.
                 download_placeholder = st.empty()
+
+    if diagnostic_stage == "actions":
+        st.success("DIAGNOSTIC PASS: input panels and Simulate control rendered.")
+        return
 
     # All eight graphs are BELOW both input columns, never nested in either one.
     if predict_clicked:
@@ -4032,9 +4064,19 @@ def render_lifecycle_app(assets=None):
     if "lifecycle_dashboard_display" in st.session_state:
         render_dashboard_results(st.session_state.lifecycle_dashboard_display)
 
+    if diagnostic_stage == "download":
+        st.success("DIAGNOSTIC PASS: download button rendered (without MC simulation).")
+        return
+
     # Supplementary reference content follows the eight result charts.
     render_calculation_formulas()
+    if diagnostic_stage == "formula":
+        st.success("DIAGNOSTIC PASS: LaTeX formula panel rendered.")
+        return
     render_schematic_and_descriptions(part1_config, part3_config, part2_config)
+    if diagnostic_stage == "reference":
+        st.success("DIAGNOSTIC PASS: both reference images and glossary rendered.")
+        return
     render_compat_html(
         "<div class='dashboard-author-footer'>"
         "Created by Jingcheng Wang, Fuzhou University."
